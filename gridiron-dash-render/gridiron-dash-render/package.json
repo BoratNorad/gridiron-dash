@@ -1,0 +1,10 @@
+{
+  "name": "gridiron-dash",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Gridiron Dash game server with online multiplayer",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": { "ws": "8.18.0" }
+}
