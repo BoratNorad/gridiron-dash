@@ -3506,7 +3506,7 @@ document.addEventListener('click',e=>{
     case 'dxopp':UI.modal.opp=v;renderModal();break;
     case 'dxn':UI.modal.n=+v;if((UI.modal.h||2)>UI.modal.n)UI.modal.h=UI.modal.n;renderModal();break;
     case 'dxh':UI.modal.h=+v;renderModal();break;
-    case 'dxgo':{const o=UI.modal.opp||'ai';dxNew(o,false,o==='online'?2:(UI.modal.n||2),UI.modal.h||2);break;}
+    case 'dxgo':{const o=UI.modal.opp||'ai';dxNew(o,false,UI.modal.n||2,UI.modal.h||2);break;}
     case 'joingo':{const inp=$('#joinCode');netGuest(inp?inp.value:'');break;}
   }
 });
@@ -3756,11 +3756,12 @@ function bellPick(cands,used,mean,sd){
 function buildDraft(seed,n){
   return seeded(seed,()=>{
     const used=new Set(),pool=[],fill={};
-    for(const pos of POSL){const c=draftCands(pos),k=Math.round(DSLOTS[pos]*n*1.5)+1;for(let i=0;i<k;i++){const x=bellPick(c,used,74,9);if(x)pool.push(ssRP(x));}}
+    for(const pos of POSL){const c=draftCands(pos),k=DSLOTS[pos]*n*2+1,st=pos==='QB'?n+1:pos==='K'?1:Math.ceil(DSLOTS[pos]*n*.6);
+      for(let i=0;i<k;i++){const x=i<st?bellPick(c,used,92,3):bellPick(c,used,80,6);if(x)pool.push(ssRP(x));}}
     pool.forEach((p,i)=>p.di=i);
     const spec={OL:3,DL:2,LB:1,CB:2,S:1},bench={QB:1,RB:1,WR:2,TE:1,OL:2,DL:2,LB:1,CB:1,S:1};
     for(const side of DSIDES.slice(0,n)){fill[side]=[];
-      for(const [sp,m] of [[spec,66],[bench,61]])for(const pos in sp)for(let i=0;i<sp[pos];i++){const x=bellPick(draftCands(pos),used,m,3);if(x)fill[side].push(Object.assign(ssRP(x),{fill:1}));}}
+      for(const [sp,m] of [[spec,73],[bench,69]])for(const pos in sp)for(let i=0;i<sp[pos];i++){const x=bellPick(draftCands(pos),used,m,3);if(x)fill[side].push(Object.assign(ssRP(x),{fill:1}));}}
     return {pool,fill};
   });
 }
@@ -3779,21 +3780,43 @@ function dxSetup(seed,a,b,n,humans){
   DX.n=n;DX.sides=DSIDES.slice(0,n);DX.seed=seed;
   const d=buildDraft(seed,n);DX.pool=d.pool;DX.fill=d.fill;
   DX.picks={};DX.names={};DX.ctl={};
-  DX.sides.forEach((sd,i)=>{DX.picks[sd]=[];DX.names[sd]=names[i]||null;DX.ctl[sd]=DX.opp==='online'?'human':DX.opp==='hot'?(i<(humans||n)?'human':'ai'):(i===0?'human':'ai');});
-  DX.first=DX.sides[(seed>>>3)%n];DX.order=dxOrder(DX.first);DX.sel=null;DX.filter='All';DX.tab='pool';DX.done=false;DX.kicked=false;DX.rr=null;
+  DX.sides.forEach((sd,i)=>{DX.picks[sd]=[];DX.names[sd]=names[i]||null;DX.ctl[sd]=DX.opp==='online'?(Array.isArray(humans)?(humans.includes(sd)?'human':'ai'):'human'):DX.opp==='hot'?(i<(humans||n)?'human':'ai'):(i===0?'human':'ai');});
+  DX.first=DX.sides[(seed>>>3)%n];DX.order=dxOrder(DX.first);DX.sel=null;DX.filter='All';DX.tab='pool';DX.done=false;DX.kicked=false;DX.rr=null;DX.ts={};
 }
 function dxNew(opp,quick,n,humans){
   closeModal();$('#startOv').classList.add('hide');
   DX.opp=opp;DX.quick=!!quick;
-  if(opp==='online'){DX.n=2;DX.sides=['A','B'];return netHost();}
+  if(opp==='online'){DX.lastN=quick?2:clamp(n||2,2,4);DX.n=DX.lastN;return netHost();}
   n=clamp(n||DX.lastN||2,2,4);humans=opp==='hot'?clamp(humans||DX.lastH||2,2,n):1;DX.lastN=n;DX.lastH=humans;
   dxSetup((Math.random()*2147483647)|0,randClubs(n),null,n,humans);
   $('#dview').classList.add('show');dxRender();
 }
-function dxLocalSide(){const t=dxTurn();return DX.opp==='online'?NET.role:DX.opp==='hot'?(t&&DX.ctl[t]==='human'?t:DX.sides.find(sd=>DX.ctl[sd]==='human')):'A';}
-function dxSideRatings(side){
-  const ps=DX.picks[side].map(i=>DX.pool[i]).concat(DX.fill[side]);
-  const by={};for(const pos of POSL)by[pos]=ps.filter(p=>p.pos===pos).sort((a,b)=>b.ovr-a.ovr);
+function dxLocalSide(){const t=dxTurn();return DX.opp==='online'?(NET.seat||NET.role):DX.opp==='hot'?(t&&DX.ctl[t]==='human'?t:DX.sides.find(sd=>DX.ctl[sd]==='human')):'A';}
+function dxTS(side){DX.ts=DX.ts||{};return DX.ts[side]||(DX.ts[side]={v:0,d:{},auto:true});}
+function dxPlayers(side){return DX.picks[side].map(i=>{const p=DX.pool[i];p.dk='p'+i;return p;}).concat((DX.fill[side]||[]).map((p,j)=>{p.dk='f'+j;return p;}));}
+function dxE(side,p,ts){return ((ts||dxTS(side)).d[p.dk])||[0,0,0];}
+function dxAvail(side,ts){return dxPlayers(side).filter(p=>{const e=dxE(side,p,ts);return !(e[1]>0)&&!e[2];});}
+const DX_START={QB:1,RB:1,WR:3,TE:1,OL:5,K:1,DL:4,LB:3,CB:3,S:2};
+/* After a game: injuries tick down, players who played gain wear (more at physical positions and with low stamina),
+   new injuries are added, everyone recovers a bit, and worn starters can be rested for the next game. */
+function dxLoad(side,injSet){
+  const ts=dxTS(side),avail=dxAvail(side),by={};
+  for(const pos of POSL)by[pos]=avail.filter(p=>p.pos===pos).sort((a,b)=>b.ovr-a.ovr);
+  for(const k in ts.d){const e=ts.d[k];if(e[1]>0)e[1]--;}
+  for(const pos of POSL)by[pos].forEach((p,i)=>{
+    const sh=i<DX_START[pos]?1:i<DX_START[pos]+1?.35:0;if(!sh)return;
+    const e=ts.d[p.dk]||(ts.d[p.dk]=[0,0,0]);
+    e[0]=clamp(e[0]+sh*WEAR[pos]*(1.6-(p.st.sta||75)/100)*(1-FX(p,'stam')),0,100);
+    const hurt=injSet?injSet.has(p.dk):Math.random()<.02*sh*(1+e[0]/40)*(1.45-RT(p,'inj')/100)*(1-FX(p,'injRes'));
+    if(hurt)e[1]=Math.max(1,Math.round((1+Math.floor(Math.random()*3))*(1.3-RT(p,'tgh')/100)));
+  });
+  for(const p of dxPlayers(side)){const e=ts.d[p.dk];if(!e)continue;e[0]=Math.max(0,e[0]-(9+RT(p,'tgh')*.04+FX(p,'recov')*10)-(e[2]?14:0));e[2]=0;}
+  if(DX.ctl[side]==='ai'||ts.auto){const av=dxAvail(side);let n=0;for(const pos of POSL){const l=av.filter(p=>p.pos===pos).sort((a,b)=>b.ovr-a.ovr);for(let i=0;i<DX_START[pos]&&n<2;i++){const p=l[i],b=l[DX_START[pos]],e=p&&ts.d[p.dk];if(e&&e[0]>65&&b&&b.ovr>=p.ovr-8){e[2]=1;n++;}}}}
+  ts.v=Math.floor(ts.v)+1;
+}
+function dxSideRatings(side,ts){
+  const ps=dxAvail(side,ts);
+  const by={};for(const pos of POSL)by[pos]=ps.map(p=>({ovr:p.ovr*(1-dxE(side,p,ts)[0]*.0012),pos:p.pos})).filter(p=>p.pos===pos).sort((a,b)=>b.ovr-a.ovr);
   const av=(a,n)=>{let s=0;for(let i=0;i<n;i++)s+=a[i]?a[i].ovr:REPL;return s/n;};
   const off=.3*av(by.QB,1)+.2*av(by.WR,3)+.2*av(by.OL,5)+.12*av(by.RB,1)+.1*av(by.TE,1)+.08*av(by.K,1);
   const def=.3*av(by.DL,4)+.2*av(by.LB,3)+.3*av(by.CB,3)+.2*av(by.S,2);
@@ -3833,8 +3856,8 @@ function dxRender(){
   const ob=$('#dbody'),keep=ob?ob.scrollTop:0;
   v.innerHTML=`<div class="dhead">${head}<div class="slots">${slots}</div></div><div class="dbody" id="dbody">${body}</div><div class="dfoot">${foot}<button class="btn ghost" data-dx="quit">Leave the draft</button></div>`;
   const nb=$('#dbody');if(nb&&keep)nb.scrollTop=keep;
-  if(!t&&DX.opp==='online'&&!DX.kicked){DX.kicked=true;setTimeout(()=>{if(NET.on)dxKickoff();},DX.quick?3500:1500);}
-  if(t&&DX.ctl[t]==='ai'){clearTimeout(DX.aiT);DX.aiT=setTimeout(dxAiPick,550);}
+  if(!t&&DX.opp==='online'&&!DX.kicked){DX.kicked=true;setTimeout(()=>{if(NET.on){if(DX.n>2)dxStartRR();else dxKickoff();}},DX.quick?3500:1500);}
+  if(t&&DX.ctl[t]==='ai'&&(DX.opp!=='online'||NET.seat==='A')){clearTimeout(DX.aiT);DX.aiT=setTimeout(dxAiPick,550);}
 }
 /* Quick online game: both devices run the same automatic snake draft from the shared pool, so the rosters match with no picking. */
 function dxAutoAll(){
@@ -3845,7 +3868,7 @@ function dxAutoAll(){
     if(!best)break;DX.picks[s].push(best.di);
   }
   DX.done=true;DX.tab='teams';
-  if(NET.on)netSet({pk:DX.picks[NET.role].slice()});
+  if(NET.on)netSet({pk:DX.picks[NET.seat||NET.role].slice()});
 }
 function dxAiPick(){
   const side=dxTurn();if(!side||DX.ctl[side]!=='ai')return;
@@ -3856,7 +3879,7 @@ function dxAiPick(){
 function dxPick(side,i){
   if(dxTurn()!==side||dxTaken().has(i))return;
   DX.picks[side].push(i);DX.sel=null;
-  if(NET.on)netSet({pk:DX.picks[NET.role].slice()});
+  if(NET.on){if(side===NET.seat)netSet({pk:DX.picks[side].slice()});else if(DX.ctl[side]==='ai'&&NET.seat==='A')netSet({apk:Object.fromEntries(DX.sides.filter(x=>DX.ctl[x]==='ai').map(x=>[x,DX.picks[x].slice()]))});}
   if(!dxTurn())DX.done=true;
   const p=DX.pool[i];hToast(`${DX.names[side]?DX.names[side].name:''} take ${p.pos} ${p.fn} ${p.ln}`,1400);
   dxRender();
@@ -3869,18 +3892,22 @@ $('#dview').addEventListener('click',e=>{
   else if(a==='pick'){DX.sel=+el.dataset.i;dxRender();}
   else if(a==='draft'&&DX.sel!=null){const s=DX.opp==='hot'?dxTurn():dxLocalSide();dxPick(s,DX.sel);}
   else if(a==='kick'){if(DX.n>2)dxStartRR();else dxKickoff();}
-  else if(a==='rrplay')dxPlayRR();
-  else if(a==='rrsim'){dxSimRR();dxTourRender();}
+  else if(a==='rrplay')dxPlayRR(el.dataset.g!=null?+el.dataset.g:null);
+  else if(a==='rrsim'){if(DX.opp==='online'){dxSimGame(+el.dataset.g);netPubRR();}else dxSimRR();dxTourRender();}
+  else if(a==='rrready'){netSet({rdy:+el.dataset.g});dxTourRender();}
+  else if(a==='rrrest'){const ts=dxTS(el.dataset.s),k=el.dataset.k,e=ts.d[k]||(ts.d[k]=[0,0,0]);e[2]=e[2]?0:1;ts.v=Math.round((ts.v+.001)*1000)/1000;if(DX.opp==='online')netPubRR();dxTourRender();}
+  else if(a==='rrauto'){const ts=dxTS(el.dataset.s);ts.auto=!ts.auto;ts.v=Math.round((ts.v+.001)*1000)/1000;if(DX.opp==='online')netPubRR();dxTourRender();}
   else if(a==='rrsimai'){while(DX.rr&&DX.rr.i<DX.rr.games.length&&!dxRRHuman(DX.rr.games[DX.rr.i]))dxSimRR();dxTourRender();}
   else if(a==='rragain')dxNew(DX.opp,false,DX.n,DX.lastH);
-  else if(a==='rrmenu'){DX.pool=null;DX.rr=null;$('#dview').classList.remove('show');showStart();}
+  else if(a==='rrmenu'){DX.pool=null;DX.rr=null;if(NET.on||NET.sus){NET.sus=false;netLeave();}$('#dview').classList.remove('show');showStart();}
   else if(a==='copy'){const link=location.origin+location.pathname+'#m-'+NET.code;try{if(navigator.share)navigator.share({title:'Gridiron Dash',text:`Play me in Gridiron Dash. Code ${NET.code}`,url:link}).catch(()=>{});else navigator.clipboard.writeText(link).then(()=>hToast('Invite link copied'),()=>hToast(`Your code is ${NET.code}`));}catch(err){hToast(`Your code is ${NET.code}`);}}
-  else if(a==='quit'||a==='cancel'){clearTimeout(DX.aiT);DX.pool=null;DX.rr=null;if(NET.on)netLeave();$('#dview').classList.remove('show');showStart();}
+  else if(a==='netstart')netStart();
+  else if(a==='quit'||a==='cancel'){clearTimeout(DX.aiT);DX.pool=null;DX.rr=null;NET.sus=false;if(NET.on)netLeave();$('#dview').classList.remove('show');showStart();}
 });
-function dxBuildSide(side){
+function dxBuildSide(side,ts){
   return seeded(DX.seed+11+2*Math.max(0,DSIDES.indexOf(side)),()=>{
     const used=new Set();
-    const ps=DX.picks[side].map(i=>Object.assign({},DX.pool[i],{st:Object.assign({},DX.pool[i].st)})).concat(DX.fill[side].map(p=>Object.assign({},p,{st:Object.assign({},p.st)})));
+    const ps=dxAvail(side,ts).map(p=>Object.assign({},p,{st:Object.assign({},p.st),wear:dxE(side,p,ts)[0],dk:p.dk}));
     for(const p of ps)p.num=pickNumFrom(p.pos,used);
     const by={};for(const pos of POSL)by[pos]=ps.filter(p=>p.pos===pos).sort((a,b)=>b.ovr-a.ovr);
     const fill=(a,n,pos)=>{while(a.length<n){const r=makeRP(pos,-14,used);r.name='Fill-in';a.push(r);}return a;};
@@ -3892,50 +3919,101 @@ function dxBuildSide(side){
 const RR_SCHED={3:[[['A','B']],[['A','C']],[['B','C']]],4:[[['A','B'],['C','D']],[['A','C'],['B','D']],[['A','D'],['B','C']]]};
 function dxStartRR(){
   const games=[];RR_SCHED[DX.n].forEach((rd,r)=>rd.forEach(g=>games.push({x:g[0],y:g[1],r,sx:null,sy:null})));
-  DX.rr={games,i:0};dxTourRender();
+  DX.rr={games,i:0};if(DX.opp==='online'){NET.phase='rr';NET.myRes={};netSet({pk:null,apk:null,asg:null});netWho();}dxTourRender();
 }
 const dxRRHuman=g=>DX.ctl[g.x]==='human'||DX.ctl[g.y]==='human';
+const dxMine=sd=>DX.opp==='online'?sd===NET.seat:DX.ctl[sd]==='human';
 function dxStandings(){
   const t={};for(const sd of DX.sides)t[sd]={sd,w:0,l:0,tie:0,pf:0,pa:0};
   for(const g of DX.rr.games){if(g.sx==null)continue;const a=t[g.x],b=t[g.y];a.pf+=g.sx;a.pa+=g.sy;b.pf+=g.sy;b.pa+=g.sx;if(g.sx>g.sy){a.w++;b.l++;}else if(g.sx<g.sy){b.w++;a.l++;}else{a.tie++;b.tie++;}}
   const h2h=(p,q)=>{const g=DX.rr.games.find(z=>z.sx!=null&&((z.x===p.sd&&z.y===q.sd)||(z.x===q.sd&&z.y===p.sd)));if(!g)return 0;const ps=g.x===p.sd?g.sx:g.sy,qs=g.x===p.sd?g.sy:g.sx;return qs-ps;};
   return Object.values(t).sort((p,q)=>((q.w+q.tie/2)-(p.w+p.tie/2))||((q.pf-q.pa)-(p.pf-p.pa))||h2h(p,q)||(q.pf-p.pf));
 }
-function dxSimRR(){
-  const g=DX.rr.games[DX.rr.i];if(!g)return;
+function dxCurRound(){const g=DX.rr.games.filter(z=>z.sx==null);return g.length?Math.min(...g.map(z=>z.r)):Infinity;}
+function dxSimGame(gi){
+  const g=DX.rr.games[gi];if(!g||g.sx!=null)return;
   const A=dxSideRatings(g.x),B=dxSideRatings(g.y);let sa=0,sb=0;
   for(let k=0;k<11;k++){sa+=driveSim(A.off,B.def);sb+=driveSim(B.off,A.def);}
   if(sa===sb){sa+=driveSim(A.off,B.def);sb+=driveSim(B.off,A.def);}
-  g.sx=sa;g.sy=sb;DX.rr.i++;
+  g.sx=sa;g.sy=sb;dxLoad(g.x,null);dxLoad(g.y,null);
+  if(NET.on||NET.sus){NET.myRes=NET.myRes||{};NET.myRes[gi]=[sa,sb];}
 }
-function dxPlayRR(){
-  const g=DX.rr.games[DX.rr.i];if(!g)return;
-  let a=g.x,b=g.y;if(DX.ctl[a]!=='human'&&DX.ctl[b]==='human'){a=g.y;b=g.x;}
+function dxSimRR(){const T=DX.rr;if(!T.games[T.i])return;dxSimGame(T.i);T.i++;}
+function compactTS(){const o={};for(const sd in DX.ts||{}){const t=DX.ts[sd],d={};for(const k in t.d){const e=t.d[k];const w=Math.round(e[0]);if(w||e[1]||e[2])d[k]=[w,e[1],e[2]];}o[sd]={v:t.v,auto:t.auto?1:0,d};}return o;}
+function netPubRR(){netSet({res:Object.assign({},NET.myRes||{}),tst:compactTS()});}
+function dxPlayRR(gi){
+  if(gi==null)gi=DX.rr.i;const g=DX.rr.games[gi];if(!g)return;
+  let a=g.x,b=g.y;if(DX.ctl[a]!=='human'||(DX.opp==='online'&&a!==NET.seat)){a=g.y;b=g.x;}
+  if(DX.opp==='online'){NET.sus=true;NET.on=false;}
   Object.assign(G.S.A,dxBuildSide(a));Object.assign(G.S.B,dxBuildSide(b));
   G.mode='draft';G.playoff=false;G.me='A';
-  if(DX.ctl[a]==='human'&&DX.ctl[b]==='human'){G.hot=true;G.S.A.ctl='hot';G.S.B.ctl='hot';}else{G.hot=false;G.S.A.ctl='human';G.S.B.ctl='ai';}
-  G.dxg={a,b,gi:DX.rr.i};setGameTeams(DX.names[a],DX.names[b]);
+  if(DX.opp!=='online'&&DX.ctl[a]==='human'&&DX.ctl[b]==='human'){G.hot=true;G.S.A.ctl='hot';G.S.B.ctl='hot';}else{G.hot=false;G.S.A.ctl='human';G.S.B.ctl='ai';}
+  G.dxg={a,b,gi};setGameTeams(DX.names[a],DX.names[b]);
   $('#dview').classList.remove('show');enterGame();
 }
+function dxInjSet(gameSide){const out=new Set();const dp=G.S[gameSide].dp||{};for(const pos in dp)for(const p of dp[pos])if(p.injG&&p.dk)out.add(p.dk);return out;}
 function dxRRGameDone(){
   const q=G.dxg,g=q&&DX.rr&&DX.rr.games[q.gi];G.dxg=null;if(!g)return;
   const sa=G.sc.A,sb=G.sc.B;if(q.a===g.x){g.sx=sa;g.sy=sb;}else{g.sx=sb;g.sy=sa;}
-  DX.rr.i=Math.max(DX.rr.i,q.gi+1);$('#dview').classList.add('show');dxTourRender();
+  if(q.online){
+    if(NET.role==='A'){NET.myRes=NET.myRes||{};NET.myRes[q.gi]=[g.sx,g.sy];}
+    dxLoad(NET.seat,dxInjSet(NET.role));
+    NET.phase='rr';NET.gid='';NET.role=NET.seat;netSet({gid:'',gl:null,rdy:null});netWho();netPubRR();
+  }else{
+    dxLoad(q.a,dxInjSet('A'));dxLoad(q.b,dxInjSet('B'));
+    if(NET.sus){NET.sus=false;NET.on=true;NET.myRes=NET.myRes||{};NET.myRes[q.gi]=[g.sx,g.sy];netPubRR();}
+    else DX.rr.i=Math.max(DX.rr.i,q.gi+1);
+  }
+  $('#dview').classList.add('show');dxTourRender();
+}
+function dxStartOnline(gi,snap){
+  const g=DX.rr.games[gi],a=g.x<g.y?g.x:g.y,b=a===g.x?g.y:g.x;
+  const sn={[a]:(snap&&snap[a])||{v:0,d:{}},[b]:(snap&&snap[b])||{v:0,d:{}}};
+  if(NET.seat===a)netSet({gl:{gi,ts:sn}});
+  NET.role=NET.seat===a?'A':'B';NET.oppSeat=NET.seat===a?b:a;NET.gid=DX.seed+'-'+gi;
+  Object.assign(NET,{applied:0,callQ:0,specQ:0,pid:0,lastSn:0,lastIn:0,lastInStr:'',lastMvN:undefined,lastTmo:undefined,lastRk:undefined,lostT:0,inp:{b:0,s:0,k:0},callPid:-1});
+  netSet({gid:NET.gid,gs:null,sn:null,pl:null,dc:null,mv:null,inp:null,tmo:null,rdy:null,tst:null});
+  NET.phase='game';netWho();
+  Object.assign(G.S.A,dxBuildSide(a,sn[a]));Object.assign(G.S.B,dxBuildSide(b,sn[b]));
+  G.mode='draft';G.playoff=false;G.hot=false;G.me=NET.role;G.S[NET.role].ctl='human';G.S[other(NET.role)].ctl='remote';
+  G.dxg={a,b,gi,online:1};setGameTeams(DX.names[a],DX.names[b]);
+  $('#dview').classList.remove('show');enterGame();
+}
+function dxMyGame(){const r=dxCurRound();const gi=DX.rr.games.findIndex(z=>z.r===r&&z.sx==null&&(z.x===NET.seat||z.y===NET.seat));return gi<0?null:{gi,g:DX.rr.games[gi],opp:DX.rr.games[gi].x===NET.seat?DX.rr.games[gi].y:DX.rr.games[gi].x};}
+function dxLoadCard(side){
+  const ts=dxTS(side),ps=dxPlayers(side).map(p=>({p,e:dxE(side,p)})),hurt=ps.filter(x=>x.e[1]>0),worn=ps.filter(x=>!(x.e[1]>0)).sort((a,b)=>b.e[0]-a.e[0]).slice(0,6);
+  return `<div class="card"><div class="ct">${esc(DX.names[side].name)}: injuries and load</div><p class="cs" style="margin-bottom:6px">Every game adds wear, more for physical positions and low-stamina players. Worn players start games tired and get hurt more. Resting a player for one game takes a big chunk of wear off.</p>
+    ${hurt.length?`<div class="gh">Injured</div>${hurt.map(x=>`<div class="news">${x.p.pos} ${esc(x.p.fn+' '+x.p.ln)}: out ${x.e[1]} more game${x.e[1]>1?'s':''}</div>`).join('')}`:''}
+    <div class="gh">Most worn</div>${worn.map(x=>`<div class="prow" style="cursor:default"><span class="pp">${x.p.pos}</span><span class="pn">${esc(x.p.fn+' '+x.p.ln)}<small>Wear ${Math.round(x.e[0])}%. Stamina ${x.p.sta||x.p.st.sta||75}. Overall ${x.p.ovr}</small></span><span class="rt"><button class="chip2" data-dx="rrrest" data-s="${side}" data-k="${x.p.dk}" aria-pressed="${!!x.e[2]}">${x.e[2]?'Resting':'Rest'}</button></span></div>`).join('')}
+    <div class="chips"><button class="chip2" data-dx="rrauto" data-s="${side}" aria-pressed="${!!ts.auto}">Coach rests worn-out starters: ${ts.auto?'On':'Off'}</button></div></div>`;
 }
 function dxTourRender(){
-  const T=DX.rr,st=dxStandings(),nm=sd=>DX.names[sd].name,col=sd=>hslHex(DX.names[sd].hue,70,46),done=T.i>=T.games.length;
-  const g=T.games[T.i],rd=g?g.r+1:0,nRd=Math.max(...T.games.map(z=>z.r))+1;
+  const T=DX.rr,st=dxStandings(),nm=sd=>DX.names[sd].name,col=sd=>hslHex(DX.names[sd].hue,70,46),on=DX.opp==='online';
+  const r0=dxCurRound(),done=r0===Infinity,nRd=Math.max(...T.games.map(z=>z.r))+1;
+  const g=on?null:T.games[T.i];
   let head=done?`<div class="dclock">🏆 ${esc(nm(st[0].sd))} win it!</div><div class="dsub">The round robin is over. ${esc(nm(st[0].sd))} finish ${st[0].w}-${st[0].l}${st[0].tie?`-${st[0].tie}`:''}.</div>`
-    :`<div class="dclock">Round ${rd} of ${nRd}</div><div class="dsub">Everyone plays everyone once. Best record wins. Ties break on point difference, then head to head.</div>`;
-  let body=`<div class="card"><div class="ct">Standings</div><div class="list"><div class="srow hd"><span class="rk">#</span><span></span><span>Team</span><span class="num">W-L</span><span class="num">Diff</span><span class="num">Ovr</span></div>${st.map((t,k)=>{const r=dxSideRatings(t.sd);return `<div class="srow${DX.ctl[t.sd]==='human'?' me':''}"><span class="rk">${k+1}</span><span class="tc" style="background:${col(t.sd)}"></span><span class="tn">${esc(nm(t.sd))}${DX.ctl[t.sd]==='ai'?' <small>CPU</small>':''}</span><span class="num">${t.w}-${t.l}${t.tie?`-${t.tie}`:''}</span><span class="num">${t.pf-t.pa>0?'+':''}${t.pf-t.pa}</span><span class="num">${Math.round((r.off+r.def)/2)}</span></div>`;}).join('')}</div></div>`;
-  if(g){const A=dxSideRatings(g.x),B=dxSideRatings(g.y),hum=dxRRHuman(g);
-    body+=`<div class="card"><div class="kick">Next game</div><div class="ct">${esc(nm(g.x))} vs ${esc(nm(g.y))}</div><p class="cs" style="margin-bottom:8px">${esc(nm(g.x))}: offense ${A.off}, defense ${A.def}. ${esc(nm(g.y))}: offense ${B.off}, defense ${B.def}.</p>
+    :`<div class="dclock">Round ${(on?r0:g.r)+1} of ${nRd}</div><div class="dsub">Everyone plays everyone once. Best record wins. Ties break on point difference, then head to head.${on?` You’re the ${esc(nm(NET.seat))}.`:''}</div>`;
+  let body=`<div class="card"><div class="ct">Standings</div><div class="list"><div class="srow hd"><span class="rk">#</span><span></span><span>Team</span><span class="num">W-L</span><span class="num">Diff</span><span class="num">Ovr</span></div>${st.map((t,k)=>{const r=dxSideRatings(t.sd);return `<div class="srow${dxMine(t.sd)?' me':''}"><span class="rk">${k+1}</span><span class="tc" style="background:${col(t.sd)}"></span><span class="tn">${esc(nm(t.sd))}${DX.ctl[t.sd]==='ai'?' <small>CPU</small>':''}</span><span class="num">${t.w}-${t.l}${t.tie?`-${t.tie}`:''}</span><span class="num">${t.pf-t.pa>0?'+':''}${t.pf-t.pa}</span><span class="num">${Math.round((r.off+r.def)/2)}</span></div>`;}).join('')}</div></div>`;
+  const vsLine=(x,y)=>{const A=dxSideRatings(x),B=dxSideRatings(y);return `${esc(nm(x))}: offense ${A.off}, defense ${A.def}. ${esc(nm(y))}: offense ${B.off}, defense ${B.def}.`;};
+  if(!done&&on){
+    const mg=dxMyGame();
+    if(mg){const oh=DX.ctl[mg.opp]==='human',op=(NET.peers||{})[mg.opp],ready=NET.me.rdy===mg.gi;
+      body+=`<div class="card"><div class="kick">Your game</div><div class="ct">${esc(nm(NET.seat))} vs ${esc(nm(mg.opp))}</div><p class="cs" style="margin-bottom:8px">${vsLine(NET.seat,mg.opp)}</p>
+        <div class="btns">${oh?(ready?`<p class="cs">Waiting for ${esc(nm(mg.opp))} to be ready…${op&&op.rdy===mg.gi?' Starting…':''}</p>`:`<button class="btn" data-dx="rrready" data-g="${mg.gi}">Ready to play</button>${op&&op.rdy===mg.gi?`<p class="cs">${esc(nm(mg.opp))} is ready.</p>`:''}`)
+          :`<button class="btn" data-dx="rrplay" data-g="${mg.gi}">Play game</button><button class="btn alt" data-dx="rrsim" data-g="${mg.gi}">Sim game</button>`}</div></div>`;}
+    else body+=`<div class="card"><div class="ct">${T.games.some(z=>z.r===r0&&(z.x===NET.seat||z.y===NET.seat))?'Your game is done':'You sit out this round'}</div><p class="cs">Waiting for the other games in round ${r0+1} to finish.</p></div>`;
+    body+=`<div class="card"><div class="ct">Round ${r0+1}</div>${T.games.filter(z=>z.r===r0).map(z=>`<div class="news">${esc(nm(z.x))} vs ${esc(nm(z.y))}: ${z.sx!=null?`final, ${z.sx} to ${z.sy}`:DX.ctl[z.x]==='ai'&&DX.ctl[z.y]==='ai'?'simming':'in progress'}</div>`).join('')}</div>`;
+  }else if(g){const hum=dxRRHuman(g);
+    body+=`<div class="card"><div class="kick">Next game</div><div class="ct">${esc(nm(g.x))} vs ${esc(nm(g.y))}</div><p class="cs" style="margin-bottom:8px">${vsLine(g.x,g.y)}</p>
       <div class="btns">${hum?`<button class="btn" data-dx="rrplay">Play game</button><button class="btn alt" data-dx="rrsim">Sim game</button>`:`<button class="btn" data-dx="rrsim">Sim this game</button>${T.games.slice(T.i).some(dxRRHuman)?`<button class="btn alt" data-dx="rrsimai">Sim to my next game</button>`:''}`}</div></div>`;}
+  if(!done)for(const sd of DX.sides)if(dxMine(sd))body+=dxLoadCard(sd);
   const played=T.games.filter(z=>z.sx!=null);
   if(played.length)body+=`<div class="card"><div class="ct">Results</div>${played.map(z=>`<div class="news">Round ${z.r+1}: ${esc(nm(z.x))} ${z.sx}, ${esc(nm(z.y))} ${z.sy}</div>`).join('')}</div>`;
-  const left=T.games.slice(T.i+1);if(left.length)body+=`<div class="card"><div class="ct">Still to play</div>${left.map(z=>`<div class="news">Round ${z.r+1}: ${esc(nm(z.x))} vs ${esc(nm(z.y))}</div>`).join('')}</div>`;
-  const foot=done?`<button class="btn" data-dx="rragain">Draft again</button><button class="btn ghost" data-dx="rrmenu">Main menu</button>`:`<button class="btn ghost" data-dx="quit">Leave the tournament</button>`;
+  const left=T.games.filter(z=>z.sx==null&&(on?z.r>r0:true)&&z!==g);if(left.length)body+=`<div class="card"><div class="ct">Still to play</div>${left.map(z=>`<div class="news">Round ${z.r+1}: ${esc(nm(z.x))} vs ${esc(nm(z.y))}</div>`).join('')}</div>`;
+  const foot=done?(on?`<button class="btn" data-dx="rrmenu">Main menu</button>`:`<button class="btn" data-dx="rragain">Draft again</button><button class="btn ghost" data-dx="rrmenu">Main menu</button>`):`<button class="btn ghost" data-dx="quit">Leave the tournament</button>`;
+  const ob=$('#dbody'),keep=ob?ob.scrollTop:0;
   $('#dview').innerHTML=`<div class="dhead">${head}</div><div class="dbody" id="dbody">${body}</div><div class="dfoot">${foot}</div>`;
+  const nb=$('#dbody');if(nb&&keep)nb.scrollTop=keep;
 }
 function dxKickoff(){
   const A=dxBuildSide('A'),B=dxBuildSide('B');
@@ -3943,7 +4021,7 @@ function dxKickoff(){
   Object.assign(G.S.A,A);Object.assign(G.S.B,B);
   if(DX.opp==='ai'){G.me='A';G.hot=false;G.S.A.ctl='human';G.S.B.ctl='ai';}
   else if(DX.opp==='hot'){G.me='A';G.hot=true;G.S.A.ctl='hot';G.S.B.ctl='hot';}
-  else{G.me=NET.role;G.hot=false;G.S[NET.role].ctl='human';G.S[other(NET.role)].ctl='remote';NET.phase='game';NET.applied=0;NET.callQ=0;}
+  else{NET.role=NET.seat||NET.role;NET.oppSeat=other(NET.role);NET.gid=DX.seed+'-1v1';netSet({gid:NET.gid});G.me=NET.role;G.hot=false;G.S[NET.role].ctl='human';G.S[other(NET.role)].ctl='remote';NET.phase='game';NET.applied=0;NET.callQ=0;netWho();}
   setGameTeams(DX.names.A,DX.names.B);
   $('#dview').classList.remove('show');
   enterGame();
@@ -3964,31 +4042,50 @@ async function netJoin(code,role){
   const room=await getRoom();
   if(!room){hToast('Couldn’t reach the game server. Check your connection and try again.',3500);return false;}
   try{NET.nr=await room.join('gd-'+code);}catch(e){hToast('Couldn’t reach the game server. If the site was asleep, wait a few seconds and try again.',3500);return false;}
-  Object.assign(NET,{on:true,code,role,phase:'lobby',other:null,me:{},applied:0,callQ:0,specQ:0,pid:0,inp:{b:0,s:0},lastRb:0,lastRs:0,lostT:0});
+  Object.assign(NET,{on:true,sus:false,code,role,seat:role,oppSeat:null,gid:'',phase:'lobby',other:null,peers:{},peerList:[],me:{},asg:{},myRes:{},applied:0,callQ:0,specQ:0,pid:0,inp:{b:0,s:0},lastRb:0,lastRs:0,lostT:0,lobbyKey:''});
   NET.nr.onPeers(()=>{
-    const o=NET.nr.peers().find(p=>!p.sameTab&&p.presence&&(p.presence.r==='A'||p.presence.r==='B')&&p.presence.r!==role);
-    NET.other=o?o.presence:null;netFrame(0);
+    NET.peerList=NET.nr.peers().filter(p=>!p.sameTab&&p.presence).map(p=>p.presence);
+    const by={};for(const p of NET.peerList)if(p.s&&p.s!==NET.seat)by[p.s]=p;NET.peers=by;
+    netWho();netFrame(0);
   });
   return true;
 }
-function netLeave(){try{if(NET.nr)NET.nr.leave();}catch(e){}NET.on=false;NET.nr=null;NET.phase='idle';NET.other=null;try{if(location.hash)history.replaceState(null,'',location.pathname+location.search);}catch(e){}}
+function netWho(){
+  const P=NET.peers||{};
+  if(NET.phase==='game'){const o=P[NET.oppSeat];NET.other=o&&o.gid===NET.gid?o:null;}
+  else NET.other=NET.seat==='A'?(Object.values(P)[0]||null):(P.A||null);
+}
+function netLeave(){try{if(NET.nr)NET.nr.leave();}catch(e){}NET.on=false;NET.sus=false;NET.nr=null;NET.phase='idle';NET.other=null;NET.peers={};NET.seat=null;try{if(location.hash)history.replaceState(null,'',location.pathname+location.search);}catch(e){}}
 async function netHost(){
   const code=Array.from({length:6},()=>'abcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random()*31)]).join('');
   $('#dview').classList.add('show');$('#dview').innerHTML=`<div class="dhead"><div class="dclock">Setting up…</div></div>`;
   if(!await netJoin(code,'A')){$('#dview').classList.remove('show');showStart();return;}
   try{location.hash='m-'+code;}catch(e){}
-  const [a]=randClubs(1);const seed=(Math.random()*2147483647)|0;
-  dxSetup(seed,a,null);
-  netSet({r:'A',v:3,seed,tm:a,pk:[],qk:DX.quick?1:0});
+  const names=randClubs(4),seed=(Math.random()*2147483647)|0,n=DX.quick?2:clamp(DX.lastN||2,2,4);
+  DX.names={A:names[0]};DX.n=n;DX.pool=null;NET.hostN=n;NET.hostSeed=seed;NET.hostNames=names;
+  netSet({s:'A',r:'A',v:4,seed,n,names,tm:names[0],pk:[],qk:DX.quick?1:0,asg:{}});
   netLobby();
 }
+function netSeatsTaken(){return Object.values(NET.asg||{}).filter(x=>x&&x!=='X');}
 function netLobby(){
-  $('#dview').innerHTML=`<div class="dhead"><div class="dclock">Invite a friend</div><div class="dsub">${DX.quick?'Quick game, no draft. ':''}You’re the ${esc(DX.names.A.name)}. Your friend joins with this code.</div></div>
-    <div class="dbody"><div class="card"><div class="code">${NET.code}</div>
-    <p class="cs">Send your friend the invite link. Opening it drops them straight into your game. Or they can open this site, tap Join a friend and type the code. They don’t need an account and can be on any network.</p>
-    <div class="btns"><button class="btn" data-dx="copy">Copy invite link</button></div></div>
-    <p class="cs" style="text-align:center">Waiting for your friend to join…</p></div>
-    <div class="dfoot"><button class="btn ghost" data-dx="cancel">Cancel</button></div>`;
+  const host=NET.seat==='A',n=host?NET.hostN:((NET.peers.A&&NET.peers.A.n)||2),names=host?NET.hostNames:((NET.peers.A&&NET.peers.A.names)||[]);
+  const present=s=>s===NET.seat||!!(NET.peers||{})[s];
+  const seats=DSIDES.slice(0,n).map(sd=>`<div class="news">${esc(names[DSIDES.indexOf(sd)]?names[DSIDES.indexOf(sd)].name:sd)}: ${sd===NET.seat?'you':present(sd)?'joined':'open (computer team if nobody joins)'}</div>`).join('');
+  const joined=DSIDES.slice(1,n).filter(present).length;
+  $('#dview').innerHTML=`<div class="dhead"><div class="dclock">${host?'Invite friends':'You’re in'}</div><div class="dsub">${DX.quick?'Quick game, no draft. ':''}${n>2?`${n}-team draft, then a round robin. `:''}${host?'Friends join with this code.':'Waiting for the host to start.'}</div></div>
+    <div class="dbody">${host?`<div class="card"><div class="code">${NET.code}</div>
+    <p class="cs">Send your friends the invite link. Opening it drops them straight into your game. Or they can open this site, tap Join a friend and type the code. They don’t need an account and can be on any network.</p>
+    <div class="btns"><button class="btn" data-dx="copy">Copy invite link</button></div></div>`:''}
+    <div class="card"><div class="ct">Teams</div>${seats}</div>
+    ${host&&n>2?`<p class="cs" style="text-align:center">${joined?`${joined} friend${joined>1?'s':''} in. Start when everyone’s here.`:'Waiting for friends to join…'}</p>`:host?'<p class="cs" style="text-align:center">Waiting for your friend to join…</p>':''}</div>
+    <div class="dfoot">${host&&n>2&&joined?`<button class="btn" data-dx="netstart">Start the draft</button>`:''}<button class="btn ghost" data-dx="cancel">Cancel</button></div>`;
+}
+function netStart(){
+  if(NET.seat!=='A'||DX.pool)return;
+  const n=NET.hostN,hum=['A',...DSIDES.slice(1,n).filter(sd=>!!NET.peers[sd])];
+  netSet({start:{n,hum}});
+  DX.opp='online';dxSetup(NET.hostSeed,NET.hostNames.slice(0,n),null,n,hum);
+  NET.phase='draft';hToast(n>2?'Draft is on.':`${DX.names.B.name} joined. Let’s ${DX.quick?'play':'draft'}.`);if(DX.quick)dxAutoAll();dxRender();
 }
 async function netGuest(code){
   code=String(code||'').toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -3996,21 +4093,50 @@ async function netGuest(code){
   closeModal();$('#startOv').classList.add('hide');
   $('#dview').classList.add('show');$('#dview').innerHTML=`<div class="dhead"><div class="dclock">Joining ${esc(code)}…</div><div class="dsub">Looking for your friend’s game.</div></div><div class="dbody"></div><div class="dfoot"><button class="btn ghost" data-dx="cancel">Cancel</button></div>`;
   DX.opp='online';DX.pool=null;
-  if(!await netJoin(code,'B')){$('#dview').classList.remove('show');showStart();return;}
-  netSet({r:'B',v:3,pk:[]});
-  setTimeout(()=>{if(NET.on&&!DX.pool&&NET.role==='B')$('#dview .dsub').textContent='Nobody is hosting this code yet. Check it with your friend.';},8000);
+  if(!await netJoin(code,null)){$('#dview').classList.remove('show');showStart();return;}
+  NET.tok=Math.random().toString(36).slice(2,10);
+  netSet({v:4,tok:NET.tok,pk:[]});
+  setTimeout(()=>{if(NET.on&&!DX.pool&&!NET.seat)$('#dview .dsub').textContent='Nobody is hosting this code yet. Check it with your friend.';},8000);
 }
 function netFrame(dt){
   if(!NET.on)return;
-  const o=NET.other;
-  if(NET.phase==='lobby'||NET.phase==='draft'){
-    if(NET.role==='B'&&!DX.pool&&o&&o.seed&&o.tm){const [b]=randClubs(1,o.tm);dxSetup(o.seed,o.tm,b);DX.opp='online';DX.quick=!!o.qk;netSet({tm:b});NET.phase='draft';if(DX.quick)dxAutoAll();dxRender();}
-    if(NET.role==='A'&&DX.pool&&o&&o.tm&&!DX.names.B){DX.names.B=o.tm;NET.phase='draft';hToast(DX.quick?`${o.tm.name} joined. Setting up the teams.`:`${o.tm.name} joined. Let’s draft.`);if(DX.quick)dxAutoAll();dxRender();}
-    if(DX.pool&&o&&Array.isArray(o.pk)){const os=other(NET.role);if(o.pk.length!==DX.picks[os].length){const mine=new Set(DX.picks[NET.role]);DX.picks[os]=o.pk.filter(i=>!mine.has(i)&&i>=0&&i<DX.pool.length);if(!dxTurn())DX.done=true;DX.sel=null;dxRender();}}
+  const P=NET.peers||{},host=NET.seat==='A';
+  if(NET.phase==='lobby'){
+    if(host){
+      let ch=false;const free=()=>DSIDES.slice(1,NET.hostN).find(sd=>!netSeatsTaken().includes(sd));
+      for(const p of NET.peerList)if(p.tok&&!NET.asg[p.tok]){NET.asg[p.tok]=free()||'X';ch=true;}
+      if(ch)netSet({asg:Object.assign({},NET.asg)});
+      if(NET.hostN===2&&P.B&&!DX.pool)netStart();
+    }else{
+      const H=NET.peerList.find(p=>p.s==='A');
+      if(H&&H.asg&&H.asg[NET.tok]&&!NET.seat){const sd=H.asg[NET.tok];if(sd==='X'){hToast('That game is full.',2500);netLeave();$('#dview').classList.remove('show');showStart();return;}NET.seat=sd;NET.role=sd;netSet({s:sd,r:sd});}
+      if(NET.seat&&H&&H.start&&!DX.pool){DX.opp='online';DX.quick=!!H.qk;dxSetup(H.seed,H.names.slice(0,H.start.n),null,H.start.n,H.start.hum);NET.phase='draft';if(DX.quick)dxAutoAll();dxRender();return;}
+    }
+    if(NET.seat&&!DX.pool){const key=JSON.stringify([Object.keys(P).sort(),NET.seat]);if(key!==NET.lobbyKey){NET.lobbyKey=key;netLobby();}}
+  }
+  if(NET.phase==='draft'&&DX.pool){
+    let ch=false;const H=P.A;
+    for(const sd of DX.sides){if(sd===NET.seat)continue;
+      const src=DX.ctl[sd]==='human'?(P[sd]&&P[sd].pk):(!host&&H&&H.apk&&H.apk[sd]);
+      if(Array.isArray(src)&&src.length>DX.picks[sd].length){const taken=new Set(DX.sides.filter(x=>x!==sd).flatMap(x=>DX.picks[x]));DX.picks[sd]=src.filter(i=>!taken.has(i)&&i>=0&&i<DX.pool.length);ch=true;}}
+    if(ch){if(!dxTurn())DX.done=true;DX.sel=null;dxRender();}
+  }
+  if(NET.phase==='rr'&&DX.rr){
+    let ch=false;
+    for(const p of [NET.me,...Object.values(P)])if(p&&p.res)for(const gi in p.res){const g=DX.rr.games[+gi];if(g&&g.sx==null&&Array.isArray(p.res[gi])){[g.sx,g.sy]=p.res[gi];ch=true;}}
+    for(const p of Object.values(P))if(p&&p.tst)for(const sd in p.tst){const t=p.tst[sd];if(t&&t.v>(dxTS(sd).v||0)){DX.ts[sd]=JSON.parse(JSON.stringify(t));ch=true;}}
+    if(host){const r=dxCurRound();DX.rr.games.forEach((g,gi)=>{if(g.r===r&&g.sx==null&&DX.ctl[g.x]==='ai'&&DX.ctl[g.y]==='ai'){dxSimGame(gi);ch=true;}});if(ch)netPubRR();}
+    const mg=dxMyGame();
+    if(mg&&DX.ctl[mg.opp]==='human'&&NET.me.rdy===mg.gi){const op=P[mg.opp];
+      if(NET.seat<mg.opp){if(op&&op.rdy===mg.gi){dxStartOnline(mg.gi,DX.ts);return;}}
+      else if(op&&op.gl&&op.gl.gi===mg.gi){dxStartOnline(mg.gi,op.gl.ts);return;}}
+    const key=JSON.stringify(Object.values(P).map(p=>[p.s,p.rdy]));if(key!==NET.rrKey){NET.rrKey=key;ch=true;}
+    if(ch&&!document.body.classList.contains('ingame'))dxTourRender();
   }
   if(NET.phase==='game'&&document.body.classList.contains('ingame'))netGameTick(dt);
-  if(!o&&NET.phase!=='lobby'){NET.lostT+=dt;if(NET.lostT>6){NET.lostT=-30;(document.body.classList.contains('ingame')?flash:hToast)('Your friend disconnected. Waiting for them to come back…',3000);}}
-  else if(o)NET.lostT=0;
+  const o=NET.other;
+  if(!o&&(NET.phase==='game'||NET.phase==='draft')&&DX.n<=2){NET.lostT+=dt;if(NET.lostT>6){NET.lostT=-30;(document.body.classList.contains('ingame')?flash:hToast)('Your friend disconnected. Waiting for them to come back…',3000);}}
+  else NET.lostT=0;
 }
 function injKeys(){const out=[];for(const s of ['A','B']){const dp=G.S[s].dp||{};for(const pos in dp)dp[pos].forEach((p,i)=>{if(p.injG)out.push(`${s}-${pos}-${i}`);});}return out;}
 function latestGS(){const a=NET.me.gs,b=NET.other&&NET.other.gs;if(!a)return b||null;if(!b)return a;return b.q>a.q?b:a;}
@@ -4126,13 +4252,13 @@ function dxSetupModal(m){
   const info={ai:'Take turns picking against the computer, then play. You run your offense and can play defense on their drives.',
     hot:'Two players share this phone. Pass it after each pick. In the game, the defense calls its play in secret, then the offense runs it.',
     online:'Play a friend on their own device. You get an invite link and a code to send them. They can be on any network.'}[m.opp];
-  const n=m.opp==='online'?2:(m.n||2),h=Math.min(m.h||2,n);
+  const n=m.n||2,h=Math.min(m.h||2,n);
   return mtop('Draft')+`<p class="cs" style="margin-bottom:12px">Every team takes turns picking from a random pool of real players. The pool follows a bell curve: a few stars, a few weak links, and lots of solid players in the middle. Each team fills 16 spots: a quarterback, running back, three receivers, a tight end, two linemen, a kicker, two pass rushers, two linebackers, two corners and a safety.</p>
     <div class="lbl">Who’s playing</div>${segH('dxopp',[['ai','Me vs computer'],['hot','Same phone'],['online','Online']],m.opp)}
     <p class="cs" style="margin-bottom:6px">${info}</p>
-    ${m.opp==='online'?'<p class="note">Online drafts are two teams.</p>':`<div class="lbl">Teams</div>${segH('dxn',[[2,'2'],[3,'3'],[4,'4']],n)}
+    ${`<div class="lbl">Teams</div>${segH('dxn',[[2,'2'],[3,'3'],[4,'4']],n)}
     ${m.opp==='hot'&&n>2?`<div class="lbl">People on this phone</div>${segH('dxh',[[2,'2'],[3,'3'],[4,'4']].filter(o=>o[0]<=n),h)}`:''}
-    <p class="note">${n>2?`After the draft, the ${n} teams play a round robin: everyone plays everyone once (${n===3?3:6} games). ${m.opp==='hot'?`${h} of the teams are people${n>h?` and ${n-h} ${n-h>1?'are':'is'} run by the computer`:''}.`:`The other ${n-1} teams are run by the computer.`} Games between two computer teams are simmed.`:'Two teams, one game.'}</p>`}
+    <p class="note">${n>2?`After the draft, the ${n} teams play a round robin: everyone plays everyone once (${n===3?3:6} games). ${m.opp==='online'?`Up to ${n-1} friends join with your code. Any open spots become computer teams.`:m.opp==='hot'?`${h} of the teams are people${n>h?` and ${n-h} ${n-h>1?'are':'is'} run by the computer`:''}.`:`The other ${n-1} teams are run by the computer.`} Games between two computer teams are simmed.`:'Two teams, one game.'}</p>`}
     <div class="btns"><button class="btn" data-act="dxgo">Start the draft</button></div>`;
 }
 function ddSetupModal(m){
@@ -4166,7 +4292,7 @@ function joinModal(m){
 
 /* ---------- boot ---------- */
 if(window.__GD_TEST)window.__gd={G,DX,NET,get LG(){return LG},set LG(v){LG=v},genLeague,startSeason,playWeek,playPoRound,startOffseason,draftAdvance,teamRatings,payroll,standings,roster,depth,startDynGame,recordMyGame,simGame,tradeEval,serialize,deserialize,UI,renderHub,aiFill,marketVal,askOf,startDraft,draftPlayer,simRest,nextGame,
-  genNFLLeague,nflSched,nflUnits,nflSimGame,NFL_DIV,setLimits,genDraftLeague,sdAdvance,sdAiPick,sdPick,humanGames,recordGame,finalizeRound,offerCheck,makeOffer,buildY,buildR,startQuick,huddleFormed,DX,dxStandings,dxSideRatings,dxNeeds,dxTaken,dxTurn,leaveGame,SB,setupSandbox,sbGo,sbEdit,sbEnterField,sbNew,sbOpenSetup,sbSheetClick,cam,toWorld,startQuick,dxNew,dxPick,dxKickoff,dxTurn,dxNeeds,showSheet,sheetGo,tryStart,snap,renderSheet,renderPrebar,startMotion,flipCall,reSetup,SSP,applyGS,netPub,specUpdate,beginDrive,toPlaycall};
+  genNFLLeague,nflSched,nflUnits,nflSimGame,NFL_DIV,setLimits,genDraftLeague,sdAdvance,sdAiPick,sdPick,humanGames,recordGame,finalizeRound,offerCheck,makeOffer,buildY,buildR,startQuick,tryStart,huddleFormed,dxTS,dxPlayers,dxCurRound,dxMyGame,netStart,DX,dxStandings,dxSideRatings,dxNeeds,dxTaken,dxTurn,leaveGame,SB,setupSandbox,sbGo,sbEdit,sbEnterField,sbNew,sbOpenSetup,sbSheetClick,cam,toWorld,startQuick,dxNew,dxPick,dxKickoff,dxTurn,dxNeeds,showSheet,sheetGo,tryStart,snap,renderSheet,renderPrebar,startMotion,flipCall,reSetup,SSP,applyGS,netPub,specUpdate,beginDrive,toPlaycall};
 UI.loading=true;showStart();
 requestAnimationFrame(frame);
 (async()=>{
