@@ -272,6 +272,9 @@ body.ingame #game{display:flex}
 #prebar button[aria-pressed="true"]{background:#facc15;color:#1a1300}
 #prebar button.go{background:#2563eb;font-family:var(--display);font-size:18px;padding:8px 18px}
 #prebar .clk{align-self:center;color:#fff;font-weight:800;font-family:var(--display);font-size:19px;text-shadow:0 1px 4px rgba(0,0,0,.8);min-width:28px;text-align:center}
+#defchip{position:absolute;top:56px;left:50%;transform:translateX(-50%);max-width:78%;display:none;background:rgba(6,14,26,.8);color:#fff;border-radius:12px;padding:6px 11px;font-size:13px;line-height:1.3;font-weight:600;text-align:center;z-index:3;pointer-events:none}
+#defchip.show{display:block}
+#defchip b{color:#facc15}
 #pclock{position:absolute;top:10px;left:10px;min-width:46px;height:38px;padding:0 8px;border-radius:12px;background:rgba(6,14,26,.72);color:#fff;font-family:var(--display);font-weight:800;font-size:22px;line-height:38px;text-align:center;z-index:4;display:none}
 #pclock.show{display:block}
 #pclock.low{color:#f87171}
@@ -333,6 +336,7 @@ body.ingame #game{display:flex}
     <div id="pclock" aria-live="off"></div>
     <div id="banner"></div>
     <div id="toast"></div>
+    <div id="defchip"></div>
     <div id="prebar"></div>
     <div id="coachbar"></div>
     <div id="ctrl"><div id="throws"></div><button id="swBtn" aria-label="Switch player">SWITCH</button><button id="blkBtn" aria-label="Block">BLOCK</button><button id="burst" aria-label="Burst">BURST</button></div>
@@ -653,6 +657,20 @@ function makeDC(spec,call){
   const R=G.R,nLB=pers==='goal'?4:pers==='base'?3:pers==='nickel'?2:1,nCB=pers==='goal'?1:pers==='base'?2:pers==='nickel'?3:4;
   return {k:spec.k,name:spec.name,pers,cov:spec.cov,blitz:spec.blitz||0,show:!!spec.show,rot:!!spec.rot,hide:!!spec.hide,deep:spec.deep||0,
     dl:take(R.DL,4),lb:take(R.LB,nLB),cb:take(R.CB,nCB),s:take(R.S,2)};
+}
+function jobText(L,d,code,man,zx,zy,deep){
+  if(code==null){if(!d)return '';code=d.job==='rush'?1:d.job==='man'?2:d.job==='zone'?3:d.job==='spy'?4:0;if(code===2&&d.man)man=`#${d.man.rp.num}${d.man.rp.name?' '+d.man.rp.name:''}`;if(code===3&&d.zone){zx=d.zone.x;zy=d.zone.y;deep=d.zone.deep;}}
+  if(code===1)return d&&d.role==='dl'?'Rush the passer':'Blitz the quarterback';
+  if(code===2)return `Man coverage on ${man||'your receiver'}. Stay on his hip`;
+  if(code===3){const side=zx<CX-7?'left':zx>CX+7?'right':'middle',dep=deep?'deep':(zy-L)>10?'middle-depth':'short';return `${deep?'Deep zone':'Zone'}: guard the ${dep} ${side}. Break on any throw there`;}
+  if(code===4)return 'Spy the quarterback. Attack if he runs';
+  return 'Read and react to the ball';
+}
+function updateDefChip(){
+  const el=$('#defchip'),P=G.play;let t='';
+  if(P&&['presnap','live'].includes(G.state)&&P.dhCtl==='local'&&P.dh&&!P.spec&&P.type!=='fg'&&P.type!=='punt')t=`<b>${esc((G.dc&&G.dc.name)||'Defense')}</b> · #${P.dh.rp.num} ${esc(P.dh.rp.name)}: ${esc(jobText(P.L,P.dh))}`;
+  else if(P&&P.spec&&NET.on&&(G.state==='spect'||G.state==='spectwait')&&P.dh&&NET.other&&NET.other.sn&&Array.isArray(NET.other.sn.j)){const j=NET.other.sn.j;t=`<b>${esc((G.dc&&G.dc.name)||'Defense')}</b> · #${P.dh.rp.num}: ${esc(jobText(P.L,null,j[0],j[1]>=0&&P.players[j[1]]?`#${P.players[j[1]].rp.num}`:'',j[2]/10,j[3]/10,!!j[4]))}`;}
+  if(t!==G.chipT){G.chipT=t;el.innerHTML=t;el.classList.toggle('show',!!t);}
 }
 function covLabel(){const d=G.dc;if(!d)return '';return d.name+(d.show&&!d.blitz?' after showing blitz':'')+(d.rot?' with a late rotation':'');}
 
@@ -1294,7 +1312,7 @@ function aiAudible(P){
   reSetup(q);G.play.aiAudDone=true;G.play.aiAudSeen=G.preT;G.cbKey='';
   if(G.play.dhCtl==='local'||defCtl()==='human')flash(`The ${G.S[G.poss].nm} audible at the line!`,1800);
 }
-function allSet(P){for(const p of P.players)if(p.hx!=null&&Math.hypot(p.hx-p.x,p.hy-p.y)>1.2&&!(P.motion&&P.motion.p===p))return false;return true;}
+function allSet(P){for(const p of P.players)if(p.hx!=null&&Math.hypot(p.hx-p.x,p.hy-p.y)>.7&&!(P.motion&&P.motion.p===p))return false;return true;}
 function shiftMove(P,dt){
   for(const p of P.players){
     if(p.hx==null||(P.motion&&P.motion.p===p&&!P.motion.done))continue;
@@ -1302,7 +1320,7 @@ function shiftMove(P,dt){
     const hu=P.huddle&&p.hux!=null,tx=hu?p.hux:p.hx,ty=hu?p.huy:p.hy;
     const dx=tx-p.x,dy=ty-p.y,d=Math.hypot(dx,dy);
     if(d<.06){p.vx=0;p.vy=0;p.subIn=false;p.face=hu?Math.atan2(p.hcy-p.y,p.hcx-p.x):p.team==='off'?Math.PI/2:-Math.PI/2;continue;}
-    const sp=Math.min(d*3.2,p.subIn||d>6?7:hu?4.2:5.2);p.vx=dx/d*sp;p.vy=dy/d*sp;p.x+=p.vx*dt;p.y+=p.vy*dt;if(d>.4)p.face=Math.atan2(dy,dx);
+    const wrong=!hu&&P.L!=null&&(p.team==='def'?p.y<P.L+.6:p.y>P.L-.3),sp=Math.min(d*3.2,wrong?8.5:p.subIn||d>6?7:hu?4.2:5.2);p.vx=dx/d*sp;p.vy=dy/d*sp;p.x+=p.vx*dt;p.y+=p.vy*dt;if(d>.4)p.face=Math.atan2(dy,dx);
   }
   if(P.ghosts&&P.ghosts.length)P.ghosts=P.ghosts.filter(g=>{const dx=g.tx-g.x,dy=g.ty-g.y,d=Math.hypot(dx,dy);if(d<.4)return false;g.x+=dx/d*6.5*dt;g.y+=dy/d*6.5*dt;g.face=Math.atan2(dy,dx);return true;});
 }
@@ -1426,8 +1444,23 @@ function qbRead(){
   if(read)flash(read,2200);
 }
 function offSet(P){for(const p of P.off)if(p.hx!=null&&Math.hypot(p.hx-p.x,p.hy-p.y)>.8&&!(P.motion&&P.motion.p===p))return false;return true;}
+function presnapFlag(P,offList,kind,defList){
+  G.state='dead';P.over=true;hidePrebar();hideCoachBar();joy.active=false;
+  const D=G.drive,O=G.S[G.poss].nm,Dn=G.S[other(G.poss)].nm;let main,sub;
+  if(offList.length&&defList.length){main='OFFSETTING PENALTIES';sub=`${kind} on the ${O} and offside on the ${Dn}. Replay the down.`;}
+  else if(offList.length){const p=offList[0];D.los=Math.max(1,Math.round((D.los-5)*10)/10);main=kind==='Offside'?'OFFSIDE, OFFENSE':'FALSE START';sub=`#${p.rp.num} ${p.rp.name} ${kind==='Offside'?'was past the line':'was still moving'} at the snap. 5 yards. Replay the down.`;}
+  else{const p=defList[0],gain=Math.min(5,(100-D.los)/2);D.los=Math.round((D.los+gain)*10)/10;main='OFFSIDE, DEFENSE';sub=`#${p.rp.num} ${p.rp.name} was across the line at the snap. ${gain<5?'Half the distance':'5 yards'}.`;
+    if(D.los>=D.fd){D.down=1;D.fd=Math.min(D.los+10,100);sub+=' First down.';}else sub+=' Replay the down.';}
+  G.run=false;const o={main,sub,b:'',next:()=>toPlaycall()};
+  G.outcome=o;G.dead=1.7;showBanner(o);updateHud();buzz([30,30,30]);
+  if(NET.on)netPub('res',{m:{main,sub,b:''}});
+}
 function snap(){
   if(!NET.on&&G.play&&!G.play.sb&&G.state==='presnap'&&isLocal(offCtl())&&!offSet(G.play)&&G.pc>1.5&&G.play.type!=='fg'&&G.play.type!=='punt'){flash('Wait for your players to get set.',900);return;}
+  {const P0=G.play;if(P0&&!P0.sb&&P0.type!=='fg'&&P0.type!=='punt'&&!P0.spec){
+    const L=P0.L,mm=p=>P0.motion&&P0.motion.p===p;
+    const offO=P0.off.filter(p=>!mm(p)&&p.y>L+.35),fs=P0.off.filter(p=>!mm(p)&&p.y<=L+.35&&Math.hypot(p.vx,p.vy)>2&&p.hx!=null&&Math.hypot(p.hx-p.x,p.hy-p.y)>1.6),offD=P0.def.filter(p=>p.y<L+.2);
+    if(offO.length||fs.length||offD.length)return presnapFlag(P0,offO.length?offO:fs,offO.length?'Offside':'False start',offD);}}
   const P=G.play;G.state='live';G.plays++;burst.t=0;burst.cd=0;joy.active=false;hidePrebar();hideCoachBar();
   if(G.aiDis){G.dc.show=G.aiDis.show;G.dc.rot=G.aiDis.rot;G.aiDis=null;}
   for(const p of P.players){p.hx=null;if(!(P.motion&&P.motion.p===p)){p.vx=0;p.vy=0;}}P.ghosts=[];
@@ -1466,7 +1499,7 @@ function update(dt){
     if(p.team==='off'&&p.stun>0){v.x*=.2;v.y*=.2;}
     if(p.team==='off'&&p.jam>0){v.x*=.3;v.y*=.3;}
     const hum=(p===P.ctrl&&isLocal(offCtl()))||p===P.dh;
-    let kk=(hum?p.acc+4:p.acc)*dt;{const vm=Math.hypot(p.vx,p.vy),dm=Math.hypot(v.x,v.y);if(vm>2&&dm>2&&(p.vx*v.x+p.vy*v.y)/(vm*dm)<.5)kk*=.5+.5*p.cod/100;}const k=Math.min(1,kk);
+    let kk=(hum?p.acc+(p===P.dh?6:4):p.acc)*dt;{const vm=Math.hypot(p.vx,p.vy),dm=Math.hypot(v.x,v.y);if(vm>2&&dm>2&&(p.vx*v.x+p.vy*v.y)/(vm*dm)<.5)kk*=hum?.8+.2*p.cod/100:.5+.5*p.cod/100;}const k=Math.min(1,kk);
     p.vx+=(v.x-p.vx)*k;p.vy+=(v.y-p.vy)*k;p.x+=p.vx*dt;p.y+=p.vy*dt;p.run+=Math.hypot(p.vx,p.vy)*dt;
     if(p.vx*p.vx+p.vy*p.vy>.5)p.face=Math.atan2(p.vy,p.vx);
   }
@@ -2364,6 +2397,13 @@ function draw(){
     ctx.restore();
     if(ht){ctx.strokeStyle='#facc15';ctx.lineWidth=3;ctx.beginPath();ctx.arc(X(ht.x),Y(ht.y),r*(2+.25*Math.sin(now*9)),0,Math.PI*2);ctx.stroke();}
   }
+  {const he=P.dh;
+   if(he&&(G.state==='live'||G.state==='presnap')&&((P.dhCtl==='local'&&!P.spec)||(P.spec&&NET.other&&NET.other.sn&&Array.isArray(NET.other.sn.j)))){
+     const j=P.spec?NET.other.sn.j:[he.job==='man'?2:he.job==='zone'?3:0,he.man?P.players.indexOf(he.man):-1,he.zone?he.zone.x*10:0,he.zone?he.zone.y*10:0,he.zone&&he.zone.deep?1:0];
+     ctx.save();ctx.setLineDash([s*.35,s*.3]);ctx.lineWidth=2;ctx.strokeStyle='rgba(250,204,21,.75)';
+     if(j[0]===2&&j[1]>=0&&P.players[j[1]]){const m=P.players[j[1]];ctx.beginPath();ctx.moveTo(X(he.x),Y(he.y));ctx.lineTo(X(m.x),Y(m.y));ctx.stroke();ctx.beginPath();ctx.arc(X(m.x),Y(m.y),r*1.7,0,Math.PI*2);ctx.stroke();}
+     else if(j[0]===3){ctx.beginPath();ctx.ellipse(X(j[2]/10),Y(j[3]/10),(j[4]?9:5)*s,(j[4]?6:3.5)*s,0,0,Math.PI*2);ctx.stroke();}
+     ctx.restore();}}
   const showBadges=offLocal&&P.pass&&(sbE||G.state==='presnap'||(G.state==='live'&&P.phase==='pre'&&P.ball.mode==='held'&&P.ball.holder===P.qb));
   if(showBadges){
     ctx.font=`800 ${Math.max(12,1.05*s)}px "Barlow Condensed","Arial Narrow",sans-serif`;
@@ -2408,6 +2448,7 @@ function frame(now){
       }
       if(G.state==='playcall'&&offCtl()==='ai'&&G.defSpec&&G.pc<=G.aiBreak)tryStart();
       tickClock(dt);
+      updateDefChip();
       if(G.state==='live')update(dt);
       else if(G.state==='dead'){
         const P=G.play;
@@ -3742,6 +3783,8 @@ $('#dview').addEventListener('click',e=>{
 
 /* ===================== 1v1 Draft ===================== */
 const DSLOTS={QB:1,RB:1,WR:3,TE:1,OL:2,K:1,DL:2,LB:2,CB:2,S:1};
+/* Flexible personnel: 16 picks at any positions within these limits (min, max). */
+const DFLEX={QB:[1,3],RB:[0,4],WR:[0,6],TE:[0,4],OL:[0,6],K:[0,2],DL:[0,6],LB:[0,5],CB:[0,5],S:[0,4]};
 const DPOOL={QB:4,RB:4,WR:9,TE:4,OL:6,K:3,DL:6,LB:6,CB:6,S:4};
 const NPICK=16;
 const DX={pool:null,fill:null,picks:{A:[],B:[]},order:[],opp:'ai',seed:0,names:{A:null,B:null},sel:null,filter:'All',tab:'pool',done:false,first:'A',kicked:false,aiT:0,n:2,sides:['A','B'],ctl:{A:'human',B:'ai'},rr:null};
@@ -3771,7 +3814,15 @@ function dxOrder(first){
   for(let r=0;r<NPICK;r++)o.push(...(r%2?start.slice().reverse():start));
   return o;
 }
-function dxNeeds(side){const n=Object.assign({},DSLOTS);for(const i of DX.picks[side])n[DX.pool[i].pos]--;return n;}
+function dxCount(side){const c={};for(const pos of POSL)c[pos]=0;for(const i of DX.picks[side])c[DX.pool[i].pos]++;return c;}
+function dxNeeds(side){
+  const c=dxCount(side),left=NPICK-DX.picks[side].length,n={};let minNeed=0;
+  for(const pos of POSL)minNeed+=Math.max(0,DFLEX[pos][0]-c[pos]);
+  for(const pos of POSL){const room=DFLEX[pos][1]-c[pos];if(left<=0||room<=0){n[pos]=0;continue;}const helps=c[pos]<DFLEX[pos][0];n[pos]=left-1>=minNeed-(helps?1:0)?room:0;}
+  return n;
+}
+/* the computer still drafts a sensible lineup: it favors open starting spots and avoids piling up one position */
+function dxAiScore(side,p,c,remain){const tgt=DSLOTS[p.pos];let sc=p.ovr+(p.pos==='QB'?6:0)+({WR:2,CB:2,DL:2,RB:1}[p.pos]||0);if(c[p.pos]<tgt)sc+=8;else sc-=6*(c[p.pos]-tgt+1);if(p.pos==='K'&&remain>2)sc-=30;return sc;}
 function dxTaken(){return new Set(DX.sides.flatMap(s=>DX.picks[s]));}
 function dxTurn(){const k=DX.sides.reduce((t,s)=>t+DX.picks[s].length,0);return k>=DX.order.length?null:DX.order[k];}
 function randClubs(n,avoid){return shuffle(CLUBS.map((c,i)=>({name:c[1],city:c[0],hue:Math.round(i*11.25)})).filter(c=>!avoid||c.name!==avoid.name)).slice(0,n);}
@@ -3836,7 +3887,7 @@ function dxRender(){
   if(!t&&DX.quick)head=`<div class="dclock">Teams are set</div><div class="dsub">Both rosters were picked automatically from the same pool. Kicking off in a moment…</div>`;
   else if(!t)head=`<div class="dclock">Draft complete</div><div class="dsub">${DX.opp==='online'?'Kicking off in a moment…':DX.n>2?'Check the teams, then start the round robin.':'Check the teams, then kick off.'}</div>`;
   else head=`<div class="dclock">${!myTurn?`${esc(nm(t))} are picking…`:DX.opp==='hot'?`${esc(nm(t))}, you’re up`:'You’re on the clock'}</div><div class="dsub">Pick ${count+1} of ${NPICK*DX.n}.${others} ${DX.opp==='hot'?'Pass the phone after each pick.':`You’re the ${esc(nm(loc))}.`}</div>`;
-  const slots=POSL.map(pos=>{const tot=DSLOTS[pos],left=Math.max(0,need[pos]);return `<span class="slot${left===0?' done':''}">${pos} ${tot-left}/${tot}</span>`;}).join('');
+  const cnt=dxCount(persp),slots=POSL.map(pos=>`<span class="slot${need[pos]<=0?' done':''}">${pos} ${cnt[pos]}${DFLEX[pos][0]?`/${DFLEX[pos][0]}-${DFLEX[pos][1]}`:`/${DFLEX[pos][1]}`}</span>`).join('');
   let body=segH('dxtab',[['pool','Player pool'],['teams','Teams']],DX.tab);
   if(DX.tab==='pool'){
     body+=`<div class="chips">${['All',...POSL].map(p=>`<button data-dx="flt" data-v="${p}" aria-pressed="${DX.filter===p}">${p}</button>`).join('')}</div>`;
@@ -3864,7 +3915,7 @@ function dxAutoAll(){
   let k=0;
   while(dxTurn()&&k++<400){
     const s=dxTurn(),need=dxNeeds(s),tk=dxTaken(),remain=NPICK-DX.picks[s].length;let best=null,bs=-1e9;
-    for(const p of DX.pool){if(tk.has(p.di)||need[p.pos]<=0)continue;const sc=p.ovr+(p.pos==='QB'?6:0)+({WR:2,CB:2,DL:2,RB:1}[p.pos]||0)-(p.pos==='K'&&remain>2?30:0)-p.di*1e-6;if(sc>bs){bs=sc;best=p;}}
+    const c=dxCount(s);for(const p of DX.pool){if(tk.has(p.di)||need[p.pos]<=0)continue;const sc=dxAiScore(s,p,c,remain)-p.di*1e-6;if(sc>bs){bs=sc;best=p;}}
     if(!best)break;DX.picks[s].push(best.di);
   }
   DX.done=true;DX.tab='teams';
@@ -3873,7 +3924,7 @@ function dxAutoAll(){
 function dxAiPick(){
   const side=dxTurn();if(!side||DX.ctl[side]!=='ai')return;
   const need=dxNeeds(side),tk=dxTaken(),remain=NPICK-DX.picks[side].length;let best=null,bs=-1e9;
-  for(const p of DX.pool){if(tk.has(p.di)||need[p.pos]<=0)continue;let sc=p.ovr+(p.pos==='QB'?6:0)+({WR:2,CB:2,DL:2,RB:1}[p.pos]||0)+rnd(0,4);if(p.pos==='K'&&remain>2)sc-=30;if(sc>bs){bs=sc;best=p;}}
+  const c=dxCount(side);for(const p of DX.pool){if(tk.has(p.di)||need[p.pos]<=0)continue;const sc=dxAiScore(side,p,c,remain)+rnd(0,4);if(sc>bs){bs=sc;best=p;}}
   if(best)dxPick(side,best.di);
 }
 function dxPick(side,i){
@@ -4185,10 +4236,10 @@ function netGameTick(dt){
 }
 function netSnap(){
   const P=G.play;
-  if(P.pid!==NET.pid){NET.pid=P.pid;netSet({pl:{i:P.pid,t:P.players.map(p=>[p.team==='off'?1:0,p.rp.num,p.rp.ovr,p.rp.ss||0])}});}
+  if(P.pid!==NET.pid){NET.pid=P.pid;netSet({pl:{i:P.pid,t:P.players.map(p=>[p.team==='off'?1:0,p.rp.num,p.rp.ovr,p.rp.ss||0,Math.round((p.speed||7)*10)])}});}
   const pa=[];for(const p of P.players)pa.push(Math.round(p.x*10),Math.round(p.y*10));
   const b=P.ball;
-  netSet({sn:{i:P.pid,p:pa,b:[Math.round(b.x*10),Math.round(b.y*10),Math.round((b.z||0)*10),b.mode==='air'?2:1],h:P.dh?P.players.indexOf(P.dh):-1,s:G.state==='presnap'?0:G.state==='live'?1:2,c:[Math.round(G.clock*10),Math.round(G.pc*10),G.q,G.run?1:0]}});
+  netSet({sn:{i:P.pid,p:pa,b:[Math.round(b.x*10),Math.round(b.y*10),Math.round((b.z||0)*10),b.mode==='air'?2:1],h:P.dh?P.players.indexOf(P.dh):-1,j:P.dh?[P.dh.job==='rush'?1:P.dh.job==='man'?2:P.dh.job==='zone'?3:P.dh.job==='spy'?4:0,P.dh.man?P.players.indexOf(P.dh.man):-1,P.dh.zone?Math.round(P.dh.zone.x*10):0,P.dh.zone?Math.round(P.dh.zone.y*10):0,P.dh.zone&&P.dh.zone.deep?1:0]:null,s:G.state==='presnap'?0:G.state==='live'?1:2,c:[Math.round(G.clock*10),Math.round(G.pc*10),G.q,G.run?1:0]}});
 }
 function specUpdate(dt){
   const o=NET.other;if(!o||!o.pl||!o.sn||o.sn.i!==o.pl.i||!Array.isArray(o.pl.t))return;
@@ -4196,13 +4247,20 @@ function specUpdate(dt){
   let P=G.play,first=false;
   if(!P||!P.spec||P.spid!==o.pl.i){
     first=true;
-    P={spec:1,spid:o.pl.i,players:o.pl.t.map(a=>({team:a[0]?'off':'def',rp:{num:a[1],ovr:a[2],ss:a[3]},x:0,y:0,vx:0,vy:0,tx:0,ty:0,face:a[0]?Math.PI/2:-Math.PI/2,stun:0})),
+    P={spec:1,spid:o.pl.i,players:o.pl.t.map(a=>({team:a[0]?'off':'def',spd:(a[4]||70)/10,rp:{num:a[1],ovr:a[2],ss:a[3]},x:0,y:0,vx:0,vy:0,tx:0,ty:0,face:a[0]?Math.PI/2:-Math.PI/2,stun:0})),
       ball:{mode:'spot',x:CX,y:25,z:0,fx:CX,fy:25,tx:CX,ty:25},targets:[],pass:false,type:'spect',over:false,ctrl:null,dh:null,L:G.drive?G.drive.los:25};
     G.play=P;
   }
   const sp=o.sn.p,k=first?1:Math.min(1,dt*14);
   if(first&&o.sn.s===0&&!G.seen.ndrag){G.seen.ndrag=1;flash('Drag defenders to move them before the snap. Tap one to control him.',3000);}
-  P.players.forEach((p,i)=>{if(G.pdDrag&&G.pdDrag.net&&G.pdDrag.i===i)return;const tx=sp[2*i]/10,ty=sp[2*i+1]/10;if(!isFinite(tx))return;const dx=tx-p.x,dy=ty-p.y;if(Math.hypot(dx,dy)>.15&&!first)p.face=Math.atan2(dy,dx);p.x+=dx*k;p.y+=dy*k;});
+  const hi=o.sn.h,live=o.sn.s===1&&G.state==='spect';
+  P.players.forEach((p,i)=>{if(G.pdDrag&&G.pdDrag.net&&G.pdDrag.i===i)return;
+    if(live&&i===hi&&!first){const iv=inputVec(),sp2=(p.spd||7)*(burst.t>0?1.22:1),vx=iv.x*sp2,vy=iv.y*sp2;
+      p.x+=vx*dt;p.y+=vy*dt;if(Math.hypot(vx,vy)>.5)p.face=Math.atan2(vy,vx);
+      const tx=sp[2*i]/10+vx*.15,ty=sp[2*i+1]/10+vy*.15,err=Math.hypot(tx-p.x,ty-p.y);
+      if(err>4){p.x=tx;p.y=ty;}else{const kk=Math.min(1,dt*(err>1.5?6:3));p.x+=(tx-p.x)*kk;p.y+=(ty-p.y)*kk;}
+      return;}
+    const tx=sp[2*i]/10,ty=sp[2*i+1]/10;if(!isFinite(tx))return;const dx=tx-p.x,dy=ty-p.y;if(Math.hypot(dx,dy)>.15&&!first)p.face=Math.atan2(dy,dx);p.x+=dx*k;p.y+=dy*k;});
   const b=o.sn.b,bx=b[0]/10,by=b[1]/10;
   P.ball.fx=P.ball.x;P.ball.fy=P.ball.y;P.ball.x+=(bx-P.ball.x)*k;P.ball.y+=(by-P.ball.y)*k;P.ball.tx=bx;P.ball.ty=by;P.ball.z=b[2]/10;P.ball.mode=b[3]===2?'air':'spot';
   P.dh=o.sn.h>=0?P.players[o.sn.h]:null;
@@ -4253,7 +4311,7 @@ function dxSetupModal(m){
     hot:'Two players share this phone. Pass it after each pick. In the game, the defense calls its play in secret, then the offense runs it.',
     online:'Play a friend on their own device. You get an invite link and a code to send them. They can be on any network.'}[m.opp];
   const n=m.n||2,h=Math.min(m.h||2,n);
-  return mtop('Draft')+`<p class="cs" style="margin-bottom:12px">Every team takes turns picking from a random pool of real players. The pool follows a bell curve: a few stars, a few weak links, and lots of solid players in the middle. Each team fills 16 spots: a quarterback, running back, three receivers, a tight end, two linemen, a kicker, two pass rushers, two linebackers, two corners and a safety.</p>
+  return mtop('Draft')+`<p class="cs" style="margin-bottom:12px">Every team takes turns picking from a random pool of real players. Every pool has stars at every position, including a star quarterback for each team. Each team drafts 16 players at any positions you like, so you can build any personnel package. Limits: 1 to 3 QBs, and up to 4 RBs, 6 WRs, 4 TEs, 6 linemen, 2 kickers, 6 pass rushers, 5 linebackers, 5 corners and 4 safeties. Depth players fill any open starting spots.</p>
     <div class="lbl">Who’s playing</div>${segH('dxopp',[['ai','Me vs computer'],['hot','Same phone'],['online','Online']],m.opp)}
     <p class="cs" style="margin-bottom:6px">${info}</p>
     ${`<div class="lbl">Teams</div>${segH('dxn',[[2,'2'],[3,'3'],[4,'4']],n)}
