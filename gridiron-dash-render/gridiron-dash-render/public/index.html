@@ -4,7 +4,64 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Gridiron Dash v0.5</title>
-<script src="/room-shim.js"></script>
+<script>/* Connects the game's online play to this site's own server instead of Claude's.
+   Reconnects right away when the phone wakes up or the network comes back, keeps the last known
+   players while reconnecting so games don't drop, and pings the site so the free Render server
+   doesn't go to sleep mid-game. */
+(function () {
+  window.GD_SELFHOST = true;
+  let ws = null, room = null, closed = false, retry = 0, mine = {}, peers = new Map(), cbs = [], timer = 0, keep = 0, myId = null;
+  const url = () => (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  const emit = () => { for (const cb of cbs.slice()) { try { cb(); } catch (e) {} } };
+  const send = o => { if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify(o)); } catch (e) {} } };
+  function schedule(ms) { clearTimeout(timer); if (!closed && room) timer = setTimeout(() => connect().catch(() => {}), ms); }
+  function connect() {
+    return new Promise((resolve, reject) => {
+      if (ws && (ws.readyState === 0 || ws.readyState === 1)) { resolve(); return; }
+      let opened = false;
+      const sock = new WebSocket(url()); ws = sock;
+      sock.onopen = () => {
+        opened = true; retry = 0;
+        if (room) { send({ t: 'join', room }); if (Object.keys(mine).length) send({ t: 'p', patch: mine }); }
+        resolve();
+      };
+      sock.onmessage = e => {
+        let m; try { m = JSON.parse(e.data); } catch (x) { return; }
+        if (m.t === 'hello') { myId = m.id; peers = new Map((m.peers || []).map(p => [p.id, p.presence || {}])); emit(); }
+        else if (m.t === 'p') { const cur = peers.get(m.id) || {}; peers.set(m.id, Object.assign(cur, m.patch)); emit(); }
+        else if (m.t === 'l') { peers.delete(m.id); emit(); }
+      };
+      sock.onclose = () => {
+        if (ws === sock) ws = null;
+        if (!opened) reject(new Error('Could not reach the game server.'));
+        // keep the last known players until the reconnect's hello replaces them
+        schedule(Math.min(4000, 300 * Math.pow(2, retry++)));
+      };
+      sock.onerror = () => {};
+    });
+  }
+  const wake = () => { if (!closed && room && (!ws || ws.readyState > 1)) { retry = 0; schedule(0); } };
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') wake(); });
+  window.addEventListener('online', wake);
+  window.addEventListener('pageshow', wake);
+  const handle = {
+    presence(patch) { Object.assign(mine, patch); send({ t: 'p', patch }); return Promise.resolve(); },
+    peers() { return [...peers.entries()].map(([id, presence]) => ({ id, presence, sameTab: false })); },
+    onPeers(cb) { cbs.push(cb); return () => { cbs = cbs.filter(x => x !== cb); }; },
+    leave() { closed = true; clearTimeout(timer); clearInterval(keep); send({ t: 'leave' }); room = null; mine = {}; peers.clear(); cbs = []; try { ws && ws.close(); } catch (e) {} ws = null; }
+  };
+  const api = {
+    async join(name) {
+      closed = false; room = String(name); mine = {}; peers = new Map(); cbs = [];
+      clearInterval(keep); keep = setInterval(() => { fetch('/healthz', { cache: 'no-store' }).catch(() => {}); wake(); }, 120000);
+      if (ws && ws.readyState === 1) send({ t: 'join', room });
+      else await connect();
+      return handle;
+    }
+  };
+  window.claude = { use: async cap => (cap === 'room' ? api : null) };
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@500;700&display=swap" rel="stylesheet">
@@ -5290,6 +5347,7 @@ function exhModal(m){
   const sel=(k)=>`<select data-exh="${k}" style="width:100%;padding:10px;border-radius:10px;font:inherit">${opts.map(([v,l])=>`<option value="${v}" ${m[k]===v?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
   return mtop('Exhibition')+`<p class="cs" style="margin-bottom:10px">Real NFL rosters or teams you saved after a Triple Draft.</p><div class="lbl">Your team</div>${sel('a')}<div class="lbl" style="margin-top:8px">Opponent</div>${sel('b')}<div class="btns"><button class="btn" data-act="exhgo">Kick off vs the computer</button></div><div class="btns"><button class="btn alt" data-act="exhonline">Play a friend online</button></div><p class="cs" style="margin-top:6px">Online: you get an invite code, your friend joins with Join a friend, then you each pick a team.</p>`;
 }
+document.addEventListener('change',e=>{const s2=e.target.closest&&e.target.closest('[data-exh]');if(s2&&UI.modal)UI.modal[s2.dataset.exh]=s2.value;});
 function exhTeam(k){const [t,i]=k.split(':');if(t==='sv'){const s=tdSaved()[+i];if(!s)return null;const T=tdNewTeam(s.name,'human');T.slots=s.slots;T.staffObj=s.staffObj||randStaff(s.name);return T;}return nflTeamTD(+i);}
 function exhStart(a,b){
   const A=exhTeam(a),B=exhTeam(b);if(!A||!B)return;closeModal();$('#startOv').classList.add('hide');
@@ -5972,7 +6030,7 @@ function exoTick(){
 function exoKick(ea,eb){
   EXO.started=true;const host=NET.seat==='A'?NET.me.exo:(NET.peers.A&&NET.peers.A.exo);if(host&&host.ql)G.qlen=host.ql;
   const A=exoTeam(ea.p),B=exoTeam(eb.p);Object.assign(G.S.A,tdBuildSide(A,61));Object.assign(G.S.B,tdBuildSide(B,62));
-  NET.role=NET.seat;NET.oppSeat=other(NET.role);NET.gid=`exh-${NET.hostSeed||NET.code}-${EXO.n}`;
+  NET.role=NET.seat;NET.oppSeat=other(NET.role);NET.gid=`exh-${NET.code}-${EXO.n}`;
   Object.assign(NET,{applied:0,callQ:0,specQ:0,pid:0,lastSn:0,lastIn:0,lastInStr:'',lastMvN:undefined,lastTmo:undefined,lastRk:undefined,lostT:0,inp:{b:0,s:0,k:0},callPid:-1});
   netSet({gid:NET.gid,gs:null,sn:null,pl:null,dc:null,mv:null,inp:null,tmo:null});NET.phase='game';netWho();
   G.mode='exo';G.playoff=false;G.me=NET.role;G.hot=false;G.S[NET.role].ctl='human';G.S[other(NET.role)].ctl='remote';
@@ -6411,8 +6469,8 @@ function netFrame(dt){
   }
   if(NET.phase==='game'&&document.body.classList.contains('ingame'))netGameTick(dt);
   const o=NET.other;
-  if(!o&&(NET.phase==='game'||NET.phase==='draft')&&DX.n<=2){NET.lostT+=dt;if(NET.lostT>6){NET.lostT=-30;(document.body.classList.contains('ingame')?flash:hToast)('Your friend disconnected. Waiting for them to come back…',3000);}}
-  else NET.lostT=0;
+  if(!o&&(NET.phase==='game'||NET.phase==='draft')&&DX.n<=2){NET.lostT+=dt;if(NET.lostT>10){NET.lostT=-30;NET.wasLost=1;(document.body.classList.contains('ingame')?flash:hToast)('Lost your friend’s connection. Waiting for them to come back…',3000);}}
+  else{if(o&&NET.wasLost){NET.wasLost=0;flash('Your friend is back.',1500);}NET.lostT=0;}
 }
 function injKeys(){const out=[];for(const s of ['A','B']){const dp=G.S[s].dp||{};for(const pos in dp)dp[pos].forEach((p,i)=>{if(p.injG)out.push(`${s}-${pos}-${i}`);});}return out;}
 function latestGS(){const a=NET.me.gs,b=NET.other&&NET.other.gs;if(!a)return b||null;if(!b)return a;return b.q>a.q?b:a;}
