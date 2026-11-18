@@ -44,6 +44,7 @@ button:disabled{cursor:default}
 body.ingame #hub{display:none}
 body.ingame #game{display:flex}
 body.watching #ctrl,body.watching #prebar,body.watching #coachbar{display:none!important}
+body.aidef #ctrl{display:none!important}
 .hhead{flex:none;background:var(--surface);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;align-items:center;gap:12px}
 .hhead .chip{width:8px;height:40px;border-radius:3px;flex:none}
 .hh{flex:1;min-width:0}
@@ -315,6 +316,9 @@ kbd{display:inline-block;min-width:18px;padding:1px 6px;border:1px solid var(--l
 .thx{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)}.thx.new{animation:thn .6s ease-out}@keyframes thn{from{background:rgba(250,204,21,.18)}to{background:transparent}}
 .thb{flex:none;width:4px;border-radius:2px}.thh{font-weight:800;color:#fff;font-size:12px}.thh span{float:right;color:#94a3b8;font-weight:600}
 .thx i{color:#cbd5e1}.thx b{color:#fde68a}
+#tvBar{position:absolute;left:8px;right:8px;bottom:12px;display:none;gap:8px;align-items:center;background:rgba(6,14,26,.86);color:#fff;border-radius:14px;padding:10px 12px;z-index:7}
+#tvBar.show{display:flex}#tvBar b{flex:1}#tvBar button{border:0;border-radius:10px;padding:8px 12px;background:rgba(255,255,255,.14);color:#fff;font-weight:800}
+body.tvmode #pauseBtn{display:none}
 #replayBar{position:absolute;left:8px;right:8px;bottom:12px;display:none;background:rgba(6,14,26,.88);color:#fff;border-radius:14px;padding:10px 12px;z-index:7}
 #replayBar.show{display:block}#replayBar .rph{font-weight:800;margin-bottom:6px}
 .tdoffers{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
@@ -382,6 +386,7 @@ kbd{display:inline-block;min-width:18px;padding:1px 6px;border:1px solid var(--l
     <div id="toast"></div>
     <div id="defchip"></div>
     <div id="callout"></div>
+    <div id="tvBar"></div>
     <div id="thinkPanel"><div id="thinkHead"></div><div id="thinkLog"></div></div>
     <div id="replayBar"></div>
     <div id="tutbar"></div>
@@ -894,6 +899,9 @@ const G={zones:new Map(),inEngine:false,state:'idle',mode:'quick',diff:DIFF[save
 try{G.coachOn=localStorage.getItem('gd-coach')!=='0';}catch(e){}
 try{const im=localStorage.getItem('gd-inj');G.injMult=im==null?1:+im;}catch(e){G.injMult=1;}
 function injScale(){if(G.mode==='sandbox'||G.mode==='tut')return 0;return (G.injMult??1)*clamp(180/Math.max(30,G.qlen||180),1,3);}
+try{G.daiMode=+(localStorage.getItem('gd-dai')||0)||0;}catch(e){G.daiMode=0;}
+function setDai(m){G.daiMode=m;try{localStorage.setItem('gd-dai',String(m))}catch(e){}if(NET.on)netSet({dai:m?1:0});document.body.classList.toggle('aidef',NET.on&&m>0&&G.poss!==NET.role);flash(m===0?'You control a defender again.':m===1?'The computer plays your defenders. You still call the defense.':'The computer calls and plays your defense.',1800);}
+function daiChips(){return `<div class="lbl" style="margin:4px 2px">Defense control</div><div class="chips" style="flex-wrap:wrap">${[[0,'I play a defender'],[1,'Computer plays it'],[2,'Computer does it all']].map(([k,l])=>`<button class="chip2" data-sh="dai" data-v="${k}" aria-pressed="${(G.daiMode||0)===k}">${l}</button>`).join('')}</div>`;}
 try{const ac=localStorage.getItem('gd-accel');G.accel=ac==null?0:+ac;}catch(e){G.accel=0;}
 G.qlen=60;G.clock=60;try{const ql=+localStorage.getItem('gd5-qlen');if(ql>=60&&ql<=600)G.qlen=ql;}catch(e){}
 const cam={x:CX,y:50,s:10,a:.5};
@@ -1073,7 +1081,7 @@ function setupPlay(call){
   P.cbs=dc.cb.map((rp,i)=>add('def','cb',rp,CX+(i%2?12:-12)+(i>1?(i%2?-4:4):0),L+6));
   P.ss=dc.s.map((rp,i)=>add('def','s',rp,CX+(i?9:-9),L+13));
   assignDefense(P);assignBlocks(P);
-  const d=defCtl();P.dhCtl=d==='human'?'local':d==='remote'?'remote':null;
+  const d=defCtl();P.dhCtl=d==='human'?'local':d==='remote'?(NET.other&&NET.other.dai?null:'remote'):null;
   if(P.dhCtl&&!kick)P.dh=P.lbs[P.lbs.length>2?1:0]||P.ss[0];
   P.aiMotion=offCtl()==='ai'&&!kick&&call.kind!=='preview'&&Math.random()<.3;
   P.ball={mode:'spot',x:CX,y:L,z:0};
@@ -1559,7 +1567,7 @@ function enterGame(){
   if(NET.on){if(NET.role==='A')giveBall(first,25);else{G.state='spectwait';G.poss='A';updateHud();}}
   else giveBall(first,25);
 }
-function leaveGame(){G.inEngine=false;document.body.classList.remove('ingame');document.body.classList.remove('watching');G.thinkOn=false;{const tp=$('#thinkPanel');if(tp)tp.classList.remove('show');}G.state='idle';G.play=null;G.drive=null;$('#sheet').classList.remove('show');hidePrebar();}
+function leaveGame(){G.inEngine=false;document.body.classList.remove('ingame');document.body.classList.remove('aidef');document.body.classList.remove('watching');G.thinkOn=false;{const tp=$('#thinkPanel');if(tp)tp.classList.remove('show');}G.state='idle';G.play=null;G.drive=null;$('#sheet').classList.remove('show');hidePrebar();}
 function beginDrive(side,start){for(const s of ['A','B'])for(const rp of allRP(s))rp.en=Math.min(100,(rp.en??100)+10);G.poss=side;G.Y=buildY(side);G.R=buildR(other(side));startDrive(start);if(G.plays>0||side!==G.me)flash(side===G.me?(start===25?'Touchback. Ball on your 25':`Your ball on the ${spotTxt(start)}`):`${G.S[side].nm} ball. You’re on defense.`,2000);}
 function offFromY(Y){const av=a=>a.reduce((s,p)=>s+p.ovr,0)/a.length;return Math.round(.3*Y.QB.ovr+.2*av(Y.WR)+.2*av(Y.OL)+.12*Y.RB.ovr+.1*Y.TE.ovr+.08*Y.K.ovr);}
 function defFromR(R){const av=(a,n)=>a.slice(0,n).reduce((s,p)=>s+p.ovr,0)/n;return Math.round(.3*av(R.DL,4)+.2*av(R.LB,3)+.3*av(R.CB,3)+.2*av(R.S,2));}
@@ -1996,6 +2004,7 @@ function gameOver(){
   let btns;
   if(G.mode==='dyn')btns=`<button class="btn" id="backBtn">Back to the league</button>`;
   else if(G.mode==='td')btns=NET.on?`<button class="btn" id="againBtn">Back to the menu</button>`:`<button class="btn" id="againBtn">Triple Draft again</button><button class="btn ghost" id="menuBtn">Main menu</button>`;
+  else if(G.mode==='exo')btns=`<button class="btn" id="againBtn">Rematch: pick teams again</button><button class="btn ghost" id="menuBtn">Main menu</button>`;
   else if(G.mode==='watch')btns=`<button class="btn" id="againBtn">Watch another</button><button class="btn ghost" id="menuBtn">Main menu</button>`;
   else if(G.mode==='rg')btns=`${rgOverText()}<button class="btn" id="againBtn">Back to the games</button><button class="btn ghost" id="menuBtn">Main menu</button>`;
   else if(G.mode==='clg')btns=`<button class="btn" id="backBtn">Back to the league</button>`;
@@ -2006,13 +2015,14 @@ function gameOver(){
   else{quickRec[k]++;try{localStorage.setItem('gd-record',JSON.stringify(quickRec))}catch(e){}
     btns=`<button class="btn" id="againBtn">Play again with new rosters</button><button class="btn ghost" id="menuBtn">Main menu</button><div class="note">Quick game record: ${quickRec.w} wins, ${quickRec.l} losses${quickRec.t?`, ${quickRec.t} ties`:''}</div>`;}
   $('#overBox').innerHTML=`<div class="final">Final</div><div class="fscore"><div><b style="color:${A.col}">${G.sc[me]}</b><span>${esc(A.nm)}</span></div><div><b style="color:${B.col}">${G.sc[op]}</b><span>${esc(B.nm)}</span></div></div><div class="verdict">${G.hot?(k==='t'?v:`${(k==='w'?A:B).nm} win!`):v}</div>${btns}`;
-  boxGames();if(NET.on&&G.box)netSet({sn:null,pl:null,bxh:boxHalf()});
+  boxGames();if(NET.on&&G.box)netSet({sn:null,pl:null,bxh:boxHalf(),bxg:G.dxg?G.dxg.gi:null});
   $('#overBox').insertAdjacentHTML('beforeend',`<div id="boxWrap">${gameBoxHTML()}</div>`);
   if(G.injList&&G.injList.length)$('#overBox').insertAdjacentHTML('beforeend',`<div class="note" style="text-align:left;margin-top:10px"><b>Injuries:</b> ${G.injList.map(x=>`${esc(G.S[x.side].nm)} ${x.rp.pos} ${esc(x.rp.name)} (${x.part}${G.mode==='dyn'&&x.rp.id!=null?`, out ${x.wk} wk`:''})`).join('; ')}.</div>`);
   $('#overOv').classList.add('show');updateHud();$('#sit').textContent='Final';
   if(G.highlights&&G.highlights.length){$('#overBox').insertAdjacentHTML('beforeend',`<div style="text-align:left;margin-top:10px"><div class="gh">Highlights</div><div class="chips" style="flex-wrap:wrap">${G.highlights.map((h,i)=>`<button class="chip2" data-hl="${i}">▶ ${esc(h.label)}</button>`).join('')}</div></div>`);
     $('#overBox').querySelectorAll('[data-hl]').forEach(b=>b.onclick=()=>{const h=G.highlights[+b.dataset.hl];$('#overOv').classList.remove('show');replayOpen(h.rec,h.label);RP.after=()=>$('#overOv').classList.add('show');});}
   if(G.mode==='td'){$('#againBtn').onclick=()=>{$('#overOv').classList.remove('show');leaveGame();if(NET.on){netLeave();showStart();}else openModal({kind:'tdsetup'});};const mb=$('#menuBtn');if(mb)mb.onclick=()=>{$('#overOv').classList.remove('show');leaveGame();showStart();};}
+  else if(G.mode==='exo'){$('#againBtn').onclick=()=>{$('#overOv').classList.remove('show');leaveGame();NET.role=NET.seat;NET.gid='';netSet({gid:''});exoRematch();};$('#menuBtn').onclick=()=>{$('#overOv').classList.remove('show');leaveGame();EXO.on=false;netLeave();showStart();};}
   else if(G.mode==='watch'){const w=G.watch;$('#againBtn').onclick=()=>{$('#overOv').classList.remove('show');leaveGame();showStart();openModal({kind:'watch',a:w.a,b:w.b,sp:w.speed});};$('#menuBtn').onclick=()=>{$('#overOv').classList.remove('show');leaveGame();showStart();};}
   else if(G.mode==='rg'){const hot=G.hot;$('#againBtn').onclick=()=>{$('#overOv').classList.remove('show');leaveGame();showStart();openModal({kind:'rg',hot});};$('#menuBtn').onclick=()=>{$('#overOv').classList.remove('show');leaveGame();showStart();};}
   else if(G.mode==='clg')$('#backBtn').onclick=()=>{$('#overOv').classList.remove('show');leaveGame();clGameDone();UI.tab='home';afterChange();clTick();};
@@ -2201,6 +2211,7 @@ function renderSheet(){
     h+=`<div class="shgo"><button class="btn" data-sh="go" ${sc?'':'disabled'}>${esc(lbl)}</button></div>`;
   }else{
     h+=`<div class="ph"><div><div class="dd">${m==='daud'?'Change the call':`Defense: ${ord(D.down)} &amp; ${toGo(D)}`}</div><div class="fp">Ball on the ${spotTxt(D.los)}</div></div><div style="display:flex;gap:6px"><button class="rosbtn" id="depBtn">Depth</button><button class="rosbtn" id="rosBtn">Rosters</button></div></div>`;
+    if(m==='def'&&NET.on&&G.poss!==NET.role)h+=daiChips();
     G.coachD=coachDef();const cs=DEFCALLS.find(d=>d.k===G.coachD.k),ds0=NET.on?NET.role:other(G.poss),trd=tiredStarter(ds0,false);G.tiredRP=trd;
     const runLook=G.offCall&&G.offCall.form&&HEAVY.includes(G.offCall.form);
     if(G.coachOn)h+=`<div class="coach"><span class="cico">🧢</span><div><b>Coach likes ${esc(cs.name)}${G.coachD.rot?' with a two-high disguise':G.coachD.show?' and showing blitz':''}.</b> ${esc(G.coachD.text)} ${runLook?'At the line, take control of a linebacker to fill the run gap.':'At the line, take control of a safety if you want to play the deep ball, or a linebacker to spy the quarterback.'}${trd?`<div style="margin-top:6px">#${trd.num} ${esc(trd.name)} is tired (${Math.round(trd.en)}% energy). <button class="chip2" data-sh="rest">Rest him</button></div>`:''}</div><button class="chip2" data-sh="coach">Use it</button></div>`;
@@ -2228,6 +2239,7 @@ sheetEl.addEventListener('click',e=>{
     if(a==='rot'){tutEvent('pb:rot');G.defRot=!G.defRot;defPreview();renderSheet();return;}
     if(a==='go')return sheetGo();
     if(a==='to'){localTimeout();return;}
+    if(a==='dai'){setDai(+sh.dataset.v);if(G.daiMode===2&&G.state==='spectcall')daiAutoCall();else renderSheet();return;}
     if(a==='arm'){const sd=G.sheetMode==='def'?other(G.poss):G.poss;tdArm(sd,sh.dataset.v);if(NET.on&&G.sheetMode==='def')G.armPend=G.armed&&G.armed[sd]?G.armed[sd].id:null;renderSheet();return;}
     if(a==='replay'){const mode=G.sheetMode;hideSheet();replayOpen(G.lastRec,'Last play');RP.after=()=>showSheet(mode);return;}
     if(a==='nh'){G.noHuddle=!G.noHuddle;flash(G.noHuddle?'No huddle next play: no runoff, straight to the line.':'Normal huddle next play.',1500);renderSheet();return;}
@@ -2394,14 +2406,15 @@ function applyDefLook(o,remote){
 function renderSpecPre(){
   if(!NET.preOn){if(G.state!=='presnap')hidePrebar();return;}
   const dp=NET.dp||(NET.dp={show:0,rot:0,fr:null,pers:null,k:null});
-  prebar.innerHTML=`<button data-pb="spshow" aria-pressed="${!!dp.show}">Show blitz</button><button data-pb="sprot" aria-pressed="${!!dp.rot}">Two-high look</button><button data-pb="spfront">${dp.fr==='34'?'3-4 front':dp.fr==='43'?'4-3 front':'Front: coach'}</button><button data-pb="sppers">${dp.pers?{base:'Base',nickel:'Nickel',dime:'Dime',goal:'Goal line'}[dp.pers]:'Personnel: auto'}</button><button data-pb="spcall">Change call</button><button data-pb="spto">Timeout</button>`;
+  prebar.innerHTML=`<button data-pb="spshow" aria-pressed="${!!dp.show}">Show blitz</button><button data-pb="sprot" aria-pressed="${!!dp.rot}">Two-high look</button><button data-pb="spfront">${dp.fr==='34'?'3-4 front':dp.fr==='43'?'4-3 front':'Front: coach'}</button><button data-pb="sppers">${dp.pers?{base:'Base',nickel:'Nickel',dime:'Dime',goal:'Goal line'}[dp.pers]:'Personnel: auto'}</button><button data-pb="spcall">Change call</button><button data-pb="spai">${G.daiMode?'Take control':'AI defense'}</button><button data-pb="spto">Timeout</button>`;
   prebar.classList.add('show');
 }
 function specPreSend(){const dp=NET.dp;NET.dpN=(NET.dpN||0)+1;netSet({dpre:{q:NET.specQ,n:NET.dpN,show:dp.show?1:0,rot:dp.rot?1:0,fr:dp.fr,pers:dp.pers,k:dp.k}});renderSpecPre();}
 function specPreAct(a){
   const dp=NET.dp||(NET.dp={show:0,rot:0,fr:null,pers:null,k:null});
   if(a==='spshow')dp.show=!dp.show;else if(a==='sprot')dp.rot=!dp.rot;else if(a==='spfront')dp.fr=dp.fr==='43'?'34':dp.fr==='34'?null:'43';else if(a==='sppers')dp.pers=dp.pers==null?'base':dp.pers==='goal'?null:nextPers(dp.pers);
-  else if(a==='spcall'){G.selD=null;showSheet('daud');return;}else if(a==='spto'){localTimeout();return;}
+  else if(a==='spcall'){G.selD=null;showSheet('daud');return;}
+  else if(a==='spai'){setDai(G.daiMode?0:1);renderSpecPre();return;}else if(a==='spto'){localTimeout();return;}
   specPreSend();flash('Look sent to the line',700);
 }
 
@@ -4022,7 +4035,7 @@ function closeModal(){UI.modal=null;UI.trade=null;modal.classList.remove('show')
 modal.addEventListener('click',e=>{if(e.target===modal&&!(UI.modal&&UI.modal.lock))closeModal();});
 function renderModal(){
   const m=UI.modal;if(!m)return;
-  const html={player:playerModal,team:teamModal,trade:tradeModal,week:weekModal,offsum:offsumModal,newdyn:newDynModal,pickteam:pickTeamModal,confirmNew:confirmNewModal,dxsetup:dxSetupModal,devshop:devShopModal,cfb:cfbModal,rg:rgModal,watch:watchModal,join:joinModal,ddsetup:ddSetupModal,sddone:sdDoneModal,nflsetup:nflSetupModal,tdsetup:tdSetupModal,exh:exhModal,gasetup:gaSetupModal}[m.kind](m);
+  const html={player:playerModal,team:teamModal,trade:tradeModal,week:weekModal,offsum:offsumModal,newdyn:newDynModal,pickteam:pickTeamModal,confirmNew:confirmNewModal,dxsetup:dxSetupModal,devshop:devShopModal,cfb:cfbModal,sb:sbModal,fo:foModal,rg:rgModal,watch:watchModal,join:joinModal,ddsetup:ddSetupModal,sddone:sdDoneModal,nflsetup:nflSetupModal,tdsetup:tdSetupModal,exh:exhModal,gasetup:gaSetupModal}[m.kind](m);
   if(html==null){closeModal();return;}
   mpanel.innerHTML=html;
 }
@@ -4183,6 +4196,8 @@ document.addEventListener('click',e=>{
   hubAct(a,v,id);
 });
 function hubAct(a,v,id){const L=LG;
+  if(/^fo/.test(a)&&foHub(a,v))return;
+  if(a==='foopen'){openModal({kind:'fo',sd:v});return;}
   switch(a){
     case 'tab':UI.tab=v;closeModal();renderHub();view.scrollTop=0;break;
     case 'menu':showStart();break;
@@ -4227,8 +4242,9 @@ function hubAct(a,v,id){const L=LG;
     case 'tdn':UI.modal.o.n=+v;if(UI.modal.o.n>2)UI.modal.o.mirror=false;renderModal();break;
     case 'tdh':UI.modal.o.h=+v;renderModal();break;
     case 'tdopt':UI.modal.o[v]=!UI.modal.o[v];renderModal();break;
-    case 'tdgo':{const o=Object.assign({},UI.modal.o);if(o.mode==='online'){NET.td={fmt:o.fmt,mirror:o.mirror&&o.n===2,themes:o.themes,timer:o.timer,reveal:o.reveal,n:o.n};DX.lastN=o.n;dxNew('online',false,o.n);}else{NET.td=null;tdStart(o);}break;}
+    case 'tdgo':{NET.exh=null;const o=Object.assign({},UI.modal.o);if(o.mode==='online'){NET.td={fmt:o.fmt,mirror:o.mirror&&o.n===2,themes:o.themes,timer:o.timer,reveal:o.reveal,n:o.n};DX.lastN=o.n;dxNew('online',false,o.n);}else{NET.td=null;tdStart(o);}break;}
     case 'exhgo':exhStart(UI.modal.a,UI.modal.b);break;
+    case 'exhonline':{NET.td=null;NET.exh=1;EXO.k=UI.modal.a||null;DX.lastN=2;dxNew('online',false,2);break;}
     case 'gadraft':closeModal();tdStart({mode:'ai',fmt:'quick',aiStyle:'need',gauntlet:true});break;
     case 'gasaved':{const t=tdSaved()[+v];if(t){closeModal();$('#startOv').classList.add('hide');gaStart({name:t.name,slots:t.slots,staffObj:t.staffObj},null);}break;}
     case 'garesume':{GA=gaLoad();closeModal();$('#startOv').classList.add('hide');gaRender();break;}
@@ -4275,7 +4291,7 @@ function hubAct(a,v,id){const L=LG;
     case 'dxopp':UI.modal.opp=v;renderModal();break;
     case 'dxn':UI.modal.n=+v;if((UI.modal.h||2)>UI.modal.n)UI.modal.h=UI.modal.n;renderModal();break;
     case 'dxh':UI.modal.h=+v;renderModal();break;
-    case 'dxgo':{NET.td=null;DX.td=false;const o=UI.modal.opp||'ai';dxNew(o,false,UI.modal.n||2,UI.modal.h||2);break;}
+    case 'dxgo':{NET.td=null;NET.exh=null;DX.td=false;const o=UI.modal.opp||'ai';dxNew(o,false,UI.modal.n||2,UI.modal.h||2);break;}
     case 'joingo':{const inp=$('#joinCode');netGuest(inp?inp.value:'');break;}
   }
 }
@@ -5272,7 +5288,7 @@ function exhModal(m){
   const sv=tdSaved();m.a=m.a??'nfl:15';m.b=m.b??'nfl:3';
   const opts=[...sv.map((t,i)=>[`sv:${i}`,`${t.name} (saved, ${t.ovr})`]),...MAD.teams.map((n,i)=>[`nfl:${i}`,n])];
   const sel=(k)=>`<select data-exh="${k}" style="width:100%;padding:10px;border-radius:10px;font:inherit">${opts.map(([v,l])=>`<option value="${v}" ${m[k]===v?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
-  return mtop('Exhibition')+`<p class="cs" style="margin-bottom:10px">Real NFL rosters or teams you saved after a Triple Draft.</p><div class="lbl">Your team</div>${sel('a')}<div class="lbl" style="margin-top:8px">Opponent</div>${sel('b')}<div class="btns"><button class="btn" data-act="exhgo">Kick off</button></div>`;
+  return mtop('Exhibition')+`<p class="cs" style="margin-bottom:10px">Real NFL rosters or teams you saved after a Triple Draft.</p><div class="lbl">Your team</div>${sel('a')}<div class="lbl" style="margin-top:8px">Opponent</div>${sel('b')}<div class="btns"><button class="btn" data-act="exhgo">Kick off vs the computer</button></div><div class="btns"><button class="btn alt" data-act="exhonline">Play a friend online</button></div><p class="cs" style="margin-top:6px">Online: you get an invite code, your friend joins with Join a friend, then you each pick a team.</p>`;
 }
 function exhTeam(k){const [t,i]=k.split(':');if(t==='sv'){const s=tdSaved()[+i];if(!s)return null;const T=tdNewTeam(s.name,'human');T.slots=s.slots;T.staffObj=s.staffObj||randStaff(s.name);return T;}return nflTeamTD(+i);}
 function exhStart(a,b){
@@ -5331,58 +5347,147 @@ function dxSeriesFix(){
   if(!decided&&DX.rr.games.every(g=>g.sx!=null)&&!DX.rr.extra){DX.rr.extra=1;DX.rr.games.push({x:'A',y:'B',r:DX.rr.games.length,sx:null,sy:null});}
 }
 function seriesLine(){const w={A:0,B:0};for(const g of DX.rr.games)if(g.sx!=null&&!g.skip){if(g.sx>g.sy)w[g.x]++;else if(g.sy>g.sx)w[g.y]++;}const a=DX.names.A.name,b=DX.names.B.name;return w.A===w.B?`Series tied ${w.A}-${w.B}`:w.A>w.B?`${a} lead ${w.A}-${w.B}`:`${b} lead ${w.B}-${w.A}`;}
-/* ---------- front office between games: free agents and trades ---------- */
-function foState(){TD.fo=TD.fo||{signs:{},offers:{},seq:0,applied:{},log:[]};return TD.fo;}
+/* ---------- Trade center between games: NFL teams, free agents and friends ----------
+   The undrafted players stay on their simulated NFL teams. Those teams make trade offers and answer yours.
+   Only players released during the simulated season or still hurt at the end of it, plus anyone a manager
+   lets go, are free agents. Every move is logged and the rosters are rebuilt from the log in the same order
+   on every device, so two managers grabbing the same player can't leave the devices disagreeing. */
+function foState(){
+  const D=TD;if(!D.fo){const base={};for(const sd of D.sides)base[sd]=Object.assign({},D.teams[sd].slots);D.fo={base,log:[],mine:[],seq:0,applied:{},offers:{},ui:{tab:'offers'},aiOff:{},note:''};}
+  return D.fo;
+}
 function foPlayed(sd){return DX.rr?DX.rr.games.filter(g=>g.sx!=null&&!g.skip&&(g.x===sd||g.y===sd)).length:0;}
 function foProd(p){const s=p.sn||{};return (s.py||0)/25+(s.ry||0)/10+(s.rcy||0)/10+((s.ptd||0)+(s.rtd||0)+(s.rctd||0))*6+(s.tk||0)+(s.sck||0)*4+(s.int||0)*5+(s.pd||0)*2+(s.fgm||0)*3+(s.g||0)*.5;}
-function foFA(sd){
-  const D=TD,taken=new Set(),si=D.sides.indexOf(sd);for(const s of D.sides)for(const m of Object.values(D.teams[s].slots))if(m!=null&&!isCo(m))taken.add(m);
-  return TP().filter(p=>p.mpos!=='LS'&&!taken.has(p.mid)&&(D.n===1||tdHash(p.mid^D.seed^0xF0)%D.n===si)).sort((a,b)=>foProd(b)-foProd(a)).slice(0,14);
+/* who holds each player now: a manager's side, an NFL team ('t'+index) or free agency ('fa') */
+function foOwners(){
+  const D=TD,own={};for(const p of TP()){if(p.mpos==='LS')continue;own[p.mid]=(p.team<0||p.inj>0)?'fa':'t'+p.team;}
+  for(const sd of D.sides)for(const [k,m] of Object.entries(D.teams[sd].slots))if(m!=null&&!isCo(m))own[m]=sd;
+  for(const [m,o] of Object.entries(D.fo.moved||{}))if(!D.sides.some(sd=>Object.values(D.teams[sd].slots).includes(+m)))own[m]=o;
+  return own;
 }
-function foApply(sd,act,remote){
-  const D=TD,F=foState(),T=D.teams[sd];
-  if(act[0]==='sign'){const [,slot,m]=act;if(T.slots[slot]==null||Object.values(T.slots).includes(m))return;T.slots[slot]=m;F.signs[sd+':'+foPlayed(sd)]=1;F.log.push(`${T.name} sign ${tp(m).fn} ${tp(m).ln}`);}
-  else if(act[0]==='offer'){const [,id,to,give,get]=act;F.offers[id]={id,from:sd,to,give,get,st:'open'};if(D.teams[to].ctl==='ai'){const ok=foAiAnswer(F.offers[id]);if(ok)foApply(to,['acc',id],true);else F.offers[id].st='no';}}
-  else if(act[0]==='acc'||act[0]==='dec'){const o=F.offers[act[1]];if(!o||o.st!=='open')return;if(act[0]==='dec'){o.st='no';return;}
-    const A=D.teams[o.from],B=D.teams[o.to],sa=Object.keys(A.slots).find(k=>A.slots[k]===o.give),sb=Object.keys(B.slots).find(k=>B.slots[k]===o.get);
-    if(!sa||!sb){o.st='void';return;}A.slots[sa]=o.get;B.slots[sb]=o.give;o.st='done';F.log.push(`Trade: ${A.name} send ${tp(o.give).ln} to ${B.name} for ${tp(o.get).ln}`);}
-  if(!remote&&D.mode==='online'){F.mine=F.mine||[];F.mine.push(act);netSet({tdfo:F.mine.slice(-40),tdfoN:F.mine.length});}
+function foRoster(owner){const own=foOwners();return TP().filter(p=>own[p.mid]===owner);}
+function foFA(sd){return foRoster('fa').sort((a,b)=>foProd(b)-foProd(a)).slice(0,30);}
+function foVal(p,slot){return slot?posR(p.mid,slot):p.ovr;}
+function foSlotOf(T,m){return Object.keys(T.slots).find(k=>T.slots[k]===m);}
+/* map incoming players onto the slots the outgoing players leave */
+function foMap(T,give,get){
+  const slots=give.map(m=>foSlotOf(T,m));if(slots.some(s=>!s))return null;const out={},left=[...slots];
+  for(const m of get){let best=null,bv=-1e9;for(const s of left){const v=posR(m,s)+(fitOf(m,s)==='g'?6:0);if(v>bv){bv=v;best=s;}}out[best]=m;left.splice(left.indexOf(best),1);}
+  return out;
+}
+function foAiWants(ti,give,get){/* the NFL team gets 'give' and sends 'get' */
+  const v=a=>a.reduce((x,m)=>x+tp(m).ovr+Math.max(0,27-tp(m).age)*.4,0);return v(give)>=v(get)+1;
+}
+function foApplyOne(sd,a,F){
+  const D=TD,T=D.teams[sd];F.moved=F.moved||{};
+  if(a[0]==='sign'){const [,slot,m,b]=a;if(foOwners()[m]!=='fa'||T.slots[slot]==null||isCo(T.slots[slot]))return 'That player is gone.';
+    if(F.signs[sd+':'+b])return 'One signing per break.';F.signs[sd+':'+b]=1;const old=T.slots[slot];T.slots[slot]=m;F.moved[old]='fa';delete F.moved[m];
+    {const p=tp(m);if(p.inj>0&&DX.ts){const ts=DX.ts[sd]=DX.ts[sd]||{d:{}};ts.d=ts.d||{};if(!ts.d['t'+m])ts.d['t'+m]=[0,Math.max(1,Math.ceil(p.inj/3)),0];}}F.done.push(`${T.name} sign ${tp(m).fn} ${tp(m).ln}, release ${tp(old).ln}`);return '';}
+  if(a[0]==='aitr'){const [,ti,give,get]=a,own=foOwners();if(give.some(m=>own[m]!==sd)||get.some(m=>own[m]!=='t'+ti))return 'Those players moved.';
+    if(!a[4]&&!foAiWants(ti,give,get))return 'no';const map=foMap(T,give,get);if(!map)return 'Those players moved.';
+    for(const [s,m] of Object.entries(map))T.slots[s]=m;for(const m of give)F.moved[m]='t'+ti;for(const m of get)delete F.moved[m];
+    F.done.push(`${T.name} trade ${give.map(m=>tp(m).ln).join(', ')} to the ${TD.world.L.teams[ti].name} for ${get.map(m=>tp(m).ln).join(', ')}`);return '';}
+  if(a[0]==='acc'){const o=F.offers[a[1]];if(!o||o.st!=='open'||o.to!==sd)return 'Offer gone.';const A=D.teams[o.from],B=D.teams[o.to];
+    const ma=foMap(A,o.give,o.get),mb=foMap(B,o.get,o.give);if(!ma||!mb){o.st='void';return 'Those players moved.';}
+    for(const [s,m] of Object.entries(ma))A.slots[s]=m;for(const [s,m] of Object.entries(mb))B.slots[s]=m;o.st='done';F.done.push(`Trade: ${A.name} send ${o.give.map(m=>tp(m).ln).join(', ')} to ${B.name} for ${o.get.map(m=>tp(m).ln).join(', ')}`);return '';}
+  if(a[0]==='dec'){const o=F.offers[a[1]];if(o&&o.st==='open')o.st='no';return '';}
+  return '';
+}
+/* rebuild every roster from the start of the round robin, applying all managers' moves in one fixed order */
+function foRebuild(){
+  const D=TD,F=foState();for(const sd of D.sides)D.teams[sd].slots=Object.assign({},F.base[sd]);
+  F.moved={};F.signs={};F.done=[];for(const id in F.offers)if(F.offers[id].st!=='withdrawn')F.offers[id].st='open';
+  const all=F.log.slice().sort((x,y)=>x.n-y.n||(x.s<y.s?-1:x.s>y.s?1:0));
+  for(const e of all)if(e.a[0]==='offer'){const [,id,to,give,get]=e.a;F.offers[id]=Object.assign(F.offers[id]||{},{id,from:e.s,to,give,get,st:'open'});}
+  const res={};for(const e of all)if(e.a[0]!=='offer')res[e.s+':'+e.n]=foApplyOne(e.s,e.a,F);
+  return res;
+}
+function foAct(sd,a){
+  const D=TD,F=foState(),e={s:sd,n:++F.seq,a};F.log.push(e);
+  if(D.mode==='online'){F.mine.push(e);netSet({tdfo:F.mine.slice(-60),tdfoN:F.mine.length});}
+  const r=foRebuild();return r[sd+':'+e.n]||'';
 }
 function foSync(P){
   const D=TD;if(!D||D.mode!=='online')return false;const F=foState();let ch=false;
   for(const sd of D.sides){if(sd===NET.seat)continue;const p=P[sd];if(!p||!Array.isArray(p.tdfo))continue;const n=p.tdfoN||p.tdfo.length,start=n-p.tdfo.length,done=F.applied[sd]||0;
-    for(let i=Math.max(done,start);i<n;i++){foApply(sd,p.tdfo[i-start],true);ch=true;}F.applied[sd]=n;}
+    for(let i=Math.max(done,start);i<n;i++){const e=p.tdfo[i-start];if(e&&e.a){F.log.push({s:sd,n:e.n,a:e.a});F.seq=Math.max(F.seq,e.n);ch=true;}}F.applied[sd]=n;}
+  if(ch){const before=JSON.stringify(D.teams[NET.seat].slots);foRebuild();if(JSON.stringify(D.teams[NET.seat].slots)!==before)hToast('A trade or signing changed your roster.',2200);}
   return ch;
 }
-function foAiAnswer(o){const D=TD,B=D.teams[o.to],sb=Object.keys(B.slots).find(k=>B.slots[k]===o.get);if(!sb)return false;return posR(o.give,sb)>=posR(o.get,sb)-1;}
-function foCard(sd){
-  const D=TD,F=foState(),T=D.teams[sd],used=F.signs[sd+':'+foPlayed(sd)],sel=F.sel||{};let h=`<div class="card"><div class="ct">${esc(T.name)} front office</div><p class="cs" style="margin-bottom:6px">Between games: sign one free agent and send trade offers. Ratings stay hidden.</p>`;
-  if(sel.sd===sd&&sel.fa!=null){const p=tp(sel.fa),opts=Object.entries(T.slots).filter(([s,m])=>m!=null&&!isCo(m)&&SLOT_GRP[s]!=='ST'&&fitOf(sel.fa,s)!=='r');
-    h+=`<div class="gh">Sign ${esc(p.fn+' '+p.ln)} (${p.mpos}). Who does he replace?</div>${opts.map(([s,m])=>`<button class="prow" data-fo="rep" data-s="${sd}" data-k="${s}"><span class="pp">${SLOT_LBL[s]||s}</span><span class="pn">${esc(tp(m).fn+' '+tp(m).ln)}<small>${tp(m).mpos} · ${esc(lineTxt(tp(m).sn)||'no stats')}</small></span><span class="rt">${FITMARK[fitOf(sel.fa,s)]}</span></button>`).join('')}<button class="btn ghost" data-fo="cancel">Cancel</button>`;}
-  else if(!used){h+=`<div class="gh">Free agents</div>${foFA(sd).map(p=>`<button class="prow" data-fo="fa" data-s="${sd}" data-m="${p.mid}"><span class="pp">${p.mpos}</span><span class="pn">${esc(p.fn+' '+p.ln)}<small>Age ${p.age} · ${esc(lineTxt(p.sn)||'no stats')}</small></span></button>`).join('')}`;}
-  else h+=`<p class="cs">You’ve used this break’s signing.</p>`;
-  const others=D.sides.filter(s=>s!==sd);
-  if(sel.sd===sd&&sel.give!=null&&sel.to){const B=D.teams[sel.to];h+=`<div class="gh">Trade ${esc(tp(sel.give).ln)} to the ${esc(B.name)} for:</div>${Object.entries(B.slots).filter(([s,m])=>m!=null&&!isCo(m)&&SLOT_GRP[s]!=='ST').map(([s,m])=>`<button class="prow" data-fo="get" data-s="${sd}" data-m="${m}"><span class="pp">${tp(m).mpos}</span><span class="pn">${esc(tp(m).fn+' '+tp(m).ln)}<small>${esc(lineTxt(tp(m).sn)||'no stats')}</small></span></button>`).join('')}<button class="btn ghost" data-fo="cancel">Cancel</button>`;}
-  else if(sel.sd===sd&&sel.give!=null){h+=`<div class="gh">Trade ${esc(tp(sel.give).ln)} to…</div><div class="chips">${others.map(s=>`<button class="chip2" data-fo="to" data-s="${sd}" data-v="${s}">${esc(D.teams[s].name)}</button>`).join('')}</div><button class="btn ghost" data-fo="cancel">Cancel</button>`;}
-  else h+=`<details><summary class="gh" style="cursor:pointer">Offer a trade</summary>${Object.entries(T.slots).filter(([s,m])=>m!=null&&!isCo(m)&&SLOT_GRP[s]!=='ST').map(([s,m])=>`<button class="prow" data-fo="give" data-s="${sd}" data-m="${m}"><span class="pp">${tp(m).mpos}</span><span class="pn">${esc(tp(m).fn+' '+tp(m).ln)}<small>${SLOT_LBL[s]||s}</small></span></button>`).join('')}</details>`;
-  const inc=Object.values(F.offers).filter(o=>o.to===sd&&o.st==='open'),outg=Object.values(F.offers).filter(o=>o.from===sd&&o.st==='open');
-  if(inc.length)h+=`<div class="gh">Offers for you</div>${inc.map(o=>`<div class="news">${esc(D.teams[o.from].name)} offer ${esc(tp(o.give).fn+' '+tp(o.give).ln)} (${tp(o.give).mpos}) for your ${esc(tp(o.get).fn+' '+tp(o.get).ln)} <button class="chip2" data-fo="acc" data-s="${sd}" data-v="${o.id}">Accept</button> <button class="chip2" data-fo="dec" data-s="${sd}" data-v="${o.id}">Decline</button></div>`).join('')}`;
-  if(outg.length)h+=`<div class="gh">Waiting on</div>${outg.map(o=>`<div class="news">${esc(tp(o.give).ln)} for ${esc(tp(o.get).ln)} (${esc(D.teams[o.to].name)})</div>`).join('')}`;
-  if(F.log.length)h+=`<details><summary class="cs" style="cursor:pointer">Transactions</summary>${F.log.slice().reverse().map(t=>`<div class="news">${esc(t)}</div>`).join('')}</details>`;
-  return h+'</div>';
+/* NFL teams make offers: for one of your players they like, a player of theirs at the same spot */
+function foAiOffers(sd){
+  const D=TD,F=foState(),b=foPlayed(sd),key=sd+':'+b;if(F.aiOff[key])return F.aiOff[key];
+  const T=D.teams[sd],L=D.world.L,si=D.sides.indexOf(sd),offers=[];
+  seeded((D.seed^tdHash(b*131+si*7+99))>>>0,()=>{
+    const mine=Object.entries(T.slots).filter(([s,m])=>m!=null&&!isCo(m)&&SLOT_GRP[s]!=='ST'&&SLOT_GRP[s]!=='K'&&SLOT_GRP[s]!=='P');
+    for(let k=0;k<6&&offers.length<3;k++){const [slot,m]=pick(mine),p=tp(m),ti=Math.floor(Math.random()*32),theirs=foRoster('t'+ti).filter(q=>slotPen(q.mpos,slot)<=2&&q.ovr<=p.ovr-1&&q.ovr>=p.ovr-6).sort((a,b)=>foProd(b)-foProd(a));
+      if(!theirs.length||offers.some(o=>o.get[0]===m))continue;const q=theirs[0];offers.push({id:`ai-${key}-${k}`,ti,give:[q.mid],get:[m],team:L.teams[ti].name});}
+  });
+  return F.aiOff[key]=offers;
 }
-$('#dview').addEventListener('click',e=>{
-  const b=e.target.closest('[data-fo]');if(!b||!TD)return;const D=TD,F=foState(),a=b.dataset.fo,sd=b.dataset.s;F.sel=F.sel||{};
-  if(a==='cancel')F.sel={};
-  else if(a==='fa')F.sel={sd,fa:+b.dataset.m};
-  else if(a==='rep'){foApply(sd,['sign',b.dataset.k,F.sel.fa]);F.sel={};hToast('Signed.');}
-  else if(a==='give')F.sel={sd,give:+b.dataset.m};
-  else if(a==='to')F.sel.to=b.dataset.v;
-  else if(a==='get'){const id=sd+'-'+(++F.seq)+'-'+(Date.now()%100000),act=['offer',id,F.sel.to,F.sel.give,+b.dataset.m];foApply(sd,act);const o=F.offers[id];F.sel={};
-    hToast(D.teams[o.to].ctl==='ai'?(o.st==='done'?'They accepted the trade.':'They turned it down.'):'Offer sent.');}
-  else if(a==='acc'||a==='dec')foApply(sd,[a,b.dataset.v]);
-  dxTourRender();
-});
+function foPill(p){const s=lineTxt(p.sn);return `<span class="pp">${p.mpos}</span><span class="pn">${esc(p.fn+' '+p.ln)}<small>Age ${p.age}${s?' · '+esc(s):''}</small></span>`;}
+function foCard(sd){
+  const D=TD,F=foState(),T=D.teams[sd],inc=Object.values(F.offers).filter(o=>o.to===sd&&o.st==='open').length+foAiOffers(sd).filter(o=>!(F.aiDone||{})[o.id]).length;
+  return `<div class="card"><div class="ct">${esc(T.name)} trade center</div><p class="cs" style="margin-bottom:6px">Trade with the NFL teams or your friends, answer offers, or sign a free agent before the next game.</p><div class="btns"><button class="btn" data-act="foopen" data-v="${sd}">Open trade center${inc?` (${inc} offer${inc>1?'s':''})`:''}</button></div>${F.done&&F.done.length?`<p class="cs" style="margin-top:6px">Latest: ${esc(F.done[F.done.length-1])}</p>`:''}</div>`;
+}
+function foModal(m){
+  const D=TD;if(!D||!D.fo)return mtop('Trade center')+'<p class="cs">Not available right now.</p>';
+  const F=D.fo,sd=m.sd,T=D.teams[sd],U=m.u=m.u||{tab:'offers',with:null,give:[],get:[]},L=D.world.L,own=foOwners();
+  const mine=Object.entries(T.slots).filter(([s,mm])=>mm!=null&&!isCo(mm)).map(([s,mm])=>[s,tp(mm)]);
+  let h=mtop(`${esc(T.name)} trade center`)+segH('fotab',[['offers','Offers'],['trade','Make a trade'],['fa','Free agents']],U.tab);
+  if(U.tab==='offers'){
+    const ai=foAiOffers(sd).filter(o=>!(F.aiDone||{})[o.id]),fr=Object.values(F.offers).filter(o=>o.to===sd&&o.st==='open'),out=Object.values(F.offers).filter(o=>o.from===sd&&o.st==='open');
+    const card=(who,give,get,acc,dec)=>`<div class="card" style="padding:10px;margin:8px 0"><div class="kick">${esc(who)} offer</div><div class="gh">You get</div>${give.map(x=>`<div class="prow">${foPill(tp(x))}</div>`).join('')}<div class="gh">You give</div>${get.map(x=>`<div class="prow">${foPill(tp(x))}</div>`).join('')}<div class="btns"><button class="btn" ${acc}>Accept</button><button class="btn alt" ${dec}>Decline</button></div></div>`;
+    h+=ai.map(o=>card(`The ${o.team}`,o.give,o.get,`data-act="foaiacc" data-v="${o.id}"`,`data-act="foaidec" data-v="${o.id}"`)).join('')+fr.map(o=>card(`The ${D.teams[o.from].name}`,o.give,o.get,`data-act="foacc" data-v="${o.id}"`,`data-act="fodec" data-v="${o.id}"`)).join('');
+    if(!ai.length&&!fr.length)h+='<p class="cs" style="margin:10px 2px">No offers right now. New ones come in after each game.</p>';
+    if(out.length)h+=`<div class="gh">Waiting on your friends</div>${out.map(o=>`<div class="news">${esc(o.give.map(x=>tp(x).ln).join(', '))} for ${esc(o.get.map(x=>tp(x).ln).join(', '))} (${esc(D.teams[o.to].name)})</div>`).join('')}`;
+  }
+  if(U.tab==='trade'){
+    const partners=[...D.sides.filter(s=>s!==sd).map(s=>[s,D.teams[s].name]),...L.teams.map(t=>['t'+t.id,`${t.city} ${t.name}`])];
+    h+=`<div class="lbl">Trade with</div><select data-fowith="1" style="width:100%;padding:10px;border-radius:10px;font:inherit"><option value="">Pick a team…</option>${partners.map(([k,n])=>`<option value="${k}" ${U.with===k?'selected':''}>${esc(n)}${D.sides.includes(k)?' (friend)':''}</option>`).join('')}</select>`;
+    if(U.with){
+      const theirs=D.sides.includes(U.with)?Object.entries(D.teams[U.with].slots).filter(([s,mm])=>mm!=null&&!isCo(mm)).map(([s,mm])=>tp(mm)):foRoster(U.with).sort((a,b)=>foProd(b)-foProd(a)).slice(0,40);
+      const ok=U.give.length>0&&U.give.length===U.get.length;let verdict='';
+      if(ok&&!D.sides.includes(U.with)){verdict=foAiWants(+U.with.slice(1),U.give,U.get)?'<span style="color:var(--good)">They’d probably say yes.</span>':'<span style="color:var(--bad)">They’d probably say no. Offer more.</span>';}
+      const map=ok?foMap(T,U.give,U.get):null;
+      h+=`<div class="card" style="padding:10px;margin:8px 0;position:sticky;top:0;z-index:2"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><div class="gh" style="margin-top:0">You give</div>${U.give.map(x=>`<div class="news">${esc(tp(x).fn[0]+'. '+tp(x).ln)} ${tp(x).mpos}</div>`).join('')||'<p class="cs">Tap your players</p>'}</div><div><div class="gh" style="margin-top:0">You get</div>${U.get.map(x=>{const sl=map&&Object.keys(map).find(k=>map[k]===x);return `<div class="news">${esc(tp(x).fn[0]+'. '+tp(x).ln)} ${tp(x).mpos}${sl?` → ${SLOT_LBL[sl]||sl} ${FITMARK[fitOf(x,sl)]}`:''}</div>`;}).join('')||'<p class="cs">Tap their players</p>'}</div></div>
+        <p class="cs" style="margin-top:6px">${U.give.length!==U.get.length?'Trade the same number of players each way (1 for 1 or 2 for 2).':verdict||'Ready to send.'}</p><div class="btns"><button class="btn" data-act="fosend" ${ok?'':'disabled'}>Send offer</button><button class="btn ghost" data-act="foclear">Clear</button></div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><div class="gh">Your team</div>${mine.filter(([s])=>SLOT_GRP[s]!=='ST').map(([s,p])=>`<button class="prow${U.give.includes(p.mid)?' sel':''}" data-act="fogive" data-v="${p.mid}" style="${U.give.includes(p.mid)?'outline:3px solid #2563eb':''}">${foPill(p)}</button>`).join('')}</div>
+        <div><div class="gh">Their team</div>${theirs.map(p=>`<button class="prow" data-act="foget" data-v="${p.mid}" style="${U.get.includes(p.mid)?'outline:3px solid #16a34a':''}">${foPill(p)}</button>`).join('')||'<p class="cs">No players.</p>'}</div></div>`;
+    }
+  }
+  if(U.tab==='fa'){
+    const used=F.signs&&F.signs[sd+':'+foPlayed(sd)];
+    h+=`<p class="cs" style="margin:8px 2px">Players released during the simulated season, players still hurt when it ended, and anyone a manager let go. One signing per break.</p>`;
+    if(used)h+='<p class="cs"><b>You’ve used this break’s signing.</b></p>';
+    else if(U.fa!=null){const p=tp(U.fa);h+=`<div class="gh">Sign ${esc(p.fn+' '+p.ln)}. Who does he replace?</div>${mine.filter(([s])=>SLOT_GRP[s]!=='ST'&&fitOf(U.fa,s)!=='r').map(([s,q])=>`<button class="prow" data-act="forep" data-v="${s}">${foPill(q)}<span class="rt">${SLOT_LBL[s]||s} ${FITMARK[fitOf(U.fa,s)]}</span></button>`).join('')}<button class="btn ghost" data-act="foclear">Cancel</button>`;}
+    else h+=foFA(sd).map(p=>`<button class="prow" data-act="fofa" data-v="${p.mid}">${foPill(p)}${p.inj>0?`<span class="rt" style="color:var(--bad)">hurt, out ${Math.max(1,Math.ceil(p.inj/3))} game${Math.ceil(p.inj/3)>1?'s':''}</span>`:''}</button>`).join('')||'<p class="cs">No free agents.</p>';
+  }
+  if(F.done&&F.done.length)h+=`<details style="margin-top:10px"><summary class="cs" style="cursor:pointer;font-weight:700">Transactions (${F.done.length})</summary>${F.done.slice().reverse().map(t=>`<div class="news">${esc(t)}</div>`).join('')}</details>`;
+  return h;
+}
+function foHub(a,v){
+  const m=UI.modal;if(!m||m.kind!=='fo'||!TD||!TD.fo)return false;const U=m.u,D=TD,F=D.fo,sd=m.sd;
+  if(a==='fotab'){U.tab=v;U.fa=null;}
+  else if(a==='fogive'){const x=+v;U.give=U.give.includes(x)?U.give.filter(y=>y!==x):U.give.concat(x).slice(-2);}
+  else if(a==='foget'){const x=+v;U.get=U.get.includes(x)?U.get.filter(y=>y!==x):U.get.concat(x).slice(-2);}
+  else if(a==='foclear'){U.give=[];U.get=[];U.fa=null;}
+  else if(a==='fosend'){if(!U.with||!U.give.length||U.give.length!==U.get.length)return true;
+    if(D.sides.includes(U.with)){const id=`${sd}-${F.seq+1}-${Date.now()%100000}`;foAct(sd,['offer',id,U.with,U.give,U.get]);hToast(D.teams[U.with].ctl==='ai'?'Sent.':'Offer sent to your friend.',2000);
+      if(D.teams[U.with].ctl==='ai'){const ok=foAiWants(0,U.get,U.give);foAct(U.with,[ok?'acc':'dec',id]);hToast(ok?'They accepted.':'They turned it down.',2200);}}
+    else{const r=foAct(sd,['aitr',+U.with.slice(1),U.give,U.get]);hToast(r===''?'Trade done!':r==='no'?'They turned it down.':r,2400);}
+    U.give=[];U.get=[];}
+  else if(a==='foacc'||a==='fodec'){const r=foAct(sd,[a==='foacc'?'acc':'dec',v]);if(a==='foacc')hToast(r||'Trade done!',2000);}
+  else if(a==='foaiacc'){const o=foAiOffers(sd).find(x=>x.id===v);if(o){F.aiDone=F.aiDone||{};F.aiDone[o.id]=1;const r=foAct(sd,['aitr',o.ti,o.get,o.give,1]);hToast(r||'Trade done!',2000);}}
+  else if(a==='foaidec'){F.aiDone=F.aiDone||{};F.aiDone[v]=1;}
+  else if(a==='fofa')U.fa=+v;
+  else if(a==='forep'){const r=foAct(sd,['sign',v,U.fa,foPlayed(sd)]);hToast(r||'Signed.',2000);U.fa=null;}
+  else return false;
+  renderModal();dxTourRender();return true;
+}
+$('#dview').addEventListener('click',e=>{const b=e.target.closest('[data-act="foopen"]');if(!b||!TD)return;openModal({kind:'fo',sd:b.dataset.v});});
+document.addEventListener('change',e=>{const s2=e.target.closest&&e.target.closest('[data-fowith]');if(s2&&UI.modal&&UI.modal.kind==='fo'){UI.modal.u.with=s2.value||null;UI.modal.u.get=[];renderModal();}});
+
 /* ---------- Chaos League ---------- */
 const CL={replay:false,q:[],k:'',ready:false,applied:false,myRes:{}};
 const CL_Q=new Set(['release2','sign','resign','letgo','propose','nrot','nauto','restp','dspick','offacc','offdec','draftp']);
@@ -5703,6 +5808,185 @@ function watchBar(){const el=$('#thinkHead');if(!el||!G.watch)return;el.innerHTM
 document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-wsp]');if(!b||!G.watch)return;e.stopPropagation();const v=b.dataset.wsp;
   if(v==='hide'){const p=$('#thinkPanel');p.classList.toggle('min');b.textContent=p.classList.contains('min')?'Show':'Hide';return;}G.watch.speed=+v;watchBar();});
 
+/* ===================== Online round robin: watch friends' games and bet on them =====================
+   Play money only. Every manager starts the tournament with 1,000 Dash Bucks. Lines come from simulating
+   the matchup; game lines move with the live score, props lock at kickoff. You can't bet on your own games. */
+const SB_START=1000;
+function sbState(){if(!TD)return null;if(!TD.sb){let s=null;try{s=JSON.parse(localStorage.getItem('gd5-sb-'+TD.seed)||'null');}catch(e){}TD.sb=s||{bank:SB_START,bets:[],n:0};}return TD.sb;}
+function sbOpen(){const S=sbState();return S?S.bets.filter(b=>b.st==='open').reduce((a,b)=>a+b.stake,0):0;}
+function sbSave(){const S=sbState();try{localStorage.setItem('gd5-sb-'+TD.seed,JSON.stringify(S));}catch(e){}if(NET.on)netSet({bk:Math.round(S.bank+sbOpen())});}
+function sbOdds(o){return o>0?`+${o}`:`${o}`;}
+function sbPay(stake,o){return stake+(o>0?stake*o/100:stake*100/Math.abs(o));}
+function mlOdds(p){p=clamp(p,.03,.97);const q=p*1.0225;return q>=.5?-Math.round(100*q/(1-q)/5)*5:Math.round(100*(1-q)/q/5)*5;}
+function half(v){return Math.round(v*2)/2;}
+function sbDrives(){return clamp(Math.round((G.qlen||60)*4/52),3,12);}
+function sbSides(gi){const g=DX.rr.games[gi],a=g.x<g.y?g.x:g.y,b=a===g.x?g.y:g.x;return {g,a,b};}
+/* pregame numbers from 300 simulated games */
+function sbBase(gi){
+  TD.sbBase=TD.sbBase||{};if(TD.sbBase[gi])return TD.sbBase[gi];const {g}=sbSides(gi);
+  const ux=tdUnits(TD.teams[g.x]),uy=tdUnits(TD.teams[g.y]),nD=sbDrives(),M=[],T=[];let wx=0;
+  seeded((TD.seed^tdHash(gi*997+13))>>>0,()=>{for(let k=0;k<300;k++){let sx=0,sy=0;for(let d=0;d<nD;d++){sx+=driveSim(ux.off,uy.def);sy+=driveSim(uy.off,ux.def);}M.push(sx-sy);T.push(sx+sy);wx+=sx>sy?1:sx===sy?.5:0;}});
+  const mean=a=>a.reduce((x,y)=>x+y,0)/a.length,m=mean(M),t=mean(T),sd=Math.sqrt(mean(M.map(v=>(v-m)**2)))||7,st=Math.sqrt(mean(T.map(v=>(v-t)**2)))||8;
+  return TD.sbBase[gi]={m,t,sd,st,p:wx/300};
+}
+/* where the game stands, read from the two players' devices */
+function sbLive(gi){
+  const {a,b}=sbSides(gi),P=NET.peers||{},gid=DX.seed+'-'+gi,pa=P[a],pb=P[b],ok=x=>x&&x.gid===gid&&x.gs;
+  const gs=!ok(pa)?(ok(pb)?pb.gs:null):!ok(pb)?pa.gs:(pb.gs.q>pa.gs.q?pb.gs:pa.gs);if(!gs||gs.ph==='over')return null;
+  const ql=gs.ql||G.qlen||60,left=gs.qq>=5?ql*.25:Math.max(0,(4-gs.qq)*ql+gs.ck),fr=clamp(left/(4*ql),0,1);
+  return {gs,fr,sa:gs.a,sb:gs.b,a,b};
+}
+function sbLines(gi){
+  const B=sbBase(gi),{g,a}=sbSides(gi),L=sbLive(gi);let m=B.m,t=B.t,sd=B.sd,st=B.st,live=false,lock=false,status='Not started';
+  if(L){live=true;const cx=g.x===a?L.sa-L.sb:L.sb-L.sa,ct=L.sa+L.sb;m=cx+B.m*L.fr;t=ct+B.t*L.fr;sd=Math.max(1,B.sd*Math.sqrt(L.fr));st=Math.max(1,B.st*Math.sqrt(L.fr));lock=L.fr<.25;
+    status=`Live: ${L.gs.qq>=5?'OT':'Q'+L.gs.qq} ${clockTxt(L.gs.ck)}, ${esc(DX.names[g.x].name)} ${g.x===a?L.sa:L.sb}-${g.x===a?L.sb:L.sa}`;}
+  if(g.sx!=null){lock=true;status=`Final: ${esc(DX.names[g.x].name)} ${g.sx}-${g.sy}`;}
+  const z=x=>{const s=x/Math.SQRT2,t2=1/(1+.3275911*Math.abs(s)),e=1-(((((1.061405429*t2-1.453152027)*t2)+1.421413741)*t2-.284496736)*t2+.254829592)*t2*Math.exp(-s*s);return .5*(1+(s<0?-e:e));};
+  const wl=live?clamp((1-sbLive(gi).fr)*4,0,1):0,p=live?B.p*(1-wl)+z(m/sd)*wl:B.p,spX=-half(m)||-.5,tot=Math.max(.5,half(t));
+  return {p,mlX:mlOdds(p),mlY:mlOdds(1-p),spX:spX===0?-.5:spX,tot,live,lock,status,propsLock:live||g.sx!=null};
+}
+function sbProps(gi){
+  TD.sbProps=TD.sbProps||{};if(TD.sbProps[gi])return TD.sbProps[gi];const {a,b}=sbSides(gi),f=clamp((G.qlen||60)/170,.25,1.8),out=[];
+  for(const [role,seat] of [['A',a],['B',b]]){const S=dxBuildSide(seat,DX.ts&&DX.ts[seat]),dp=S.dp,pr=(pos,i,k,dflt,lbl)=>{const rp=dp[pos]&&dp[pos][i];if(!rp)return;const src=rp.mid!=null?tp(rp.mid):null,sn=src&&src.sn,per=sn&&sn.g?sn[k]/sn.g:dflt;out.push({key:`${role}-${pos}-${i}`,k,nm:rp.name,team:DX.names[seat].name,lbl,line:Math.max(.5,half(per*f))});};
+    pr('QB',0,'py',220,'passing yards');pr('RB',0,'ry',60,'rushing yards');
+    let wi=0,best=-1;(dp.WR||[]).slice(0,3).forEach((rp,i)=>{const s=rp.mid!=null&&tp(rp.mid).sn;const v=s&&s.g?s.rcy/s.g:rp.ovr;if(v>best){best=v;wi=i;}});pr('WR',wi,'rcy',55,'receiving yards');}
+  return TD.sbProps[gi]=out;
+}
+function sbPlace(sel,stake){
+  const S=sbState();stake=Math.floor(stake);if(!(stake>0)||stake>S.bank){hToast('Not enough Dash Bucks.',1800);return false;}
+  const {g}=sbSides(sel.gi);if(g.x===NET.seat||g.y===NET.seat){hToast('You can’t bet on your own game.',1800);return false;}
+  const L=sbLines(sel.gi);if(sel.k==='prop'?L.propsLock:L.lock){hToast('Betting on that is closed.',1800);return false;}
+  S.bank-=stake;S.bets.push(Object.assign({},sel,{id:++S.n,stake,st:'open'}));sbSave();hToast(`Bet placed: ${sel.desc} for ${stake}.`,2000);return true;
+}
+function sbSettle(){
+  const S=sbState();if(!S||!DX.rr)return false;let ch=false;const P=NET.peers||{};
+  for(const bt of S.bets){if(bt.st!=='open')continue;const g=DX.rr.games[bt.gi];if(!g||g.sx==null)continue;
+    let res=null;const mx=g.sx-g.sy,tot=g.sx+g.sy;
+    if(bt.k==='ml')res=mx===0?'push':((mx>0)===(bt.side==='x')?'won':'lost');
+    else if(bt.k==='sp'){const c=(bt.side==='x'?mx:-mx)+bt.line;res=c===0?'push':c>0?'won':'lost';}
+    else if(bt.k==='tot')res=tot===bt.line?'push':((tot>bt.line)===(bt.side==='o')?'won':'lost');
+    else{const {a,b}=sbSides(bt.gi),hum=[a,b].filter(s=>DX.ctl[s]==='human'),halves=hum.map(s=>P[s]&&P[s].bxg===bt.gi&&P[s].bxh).filter(Boolean);
+      if(!hum.length)res='void';else if(halves.length===hum.length){let v=0;for(const h of halves)for(const [k,l] of h.p||[])if(k===bt.key)v+=l[bt.stat]||0;bt.final=v;res=v===bt.line?'push':((v>bt.line)===(bt.side==='o')?'won':'lost');}
+      else if(DX.rr.games.filter(z=>z.sx!=null).length-(bt.doneAt??(bt.doneAt=DX.rr.games.filter(z=>z.sx!=null).length))>=3)res='void';}
+    if(!res)continue;bt.st=res;ch=true;
+    if(res==='won'){bt.pay=Math.round(sbPay(bt.stake,bt.odds));S.bank+=bt.pay;hToast(`🎉 Bet won: ${bt.desc}. +${bt.pay-bt.stake}`,2600);}
+    else if(res==='push'||res==='void'){S.bank+=bt.stake;bt.pay=bt.stake;}
+    else bt.pay=0;}
+  if(ch)sbSave();return ch;
+}
+function sbCard(){
+  if(!DX.td||!TD||DX.opp!=='online')return '';const S=sbState(),P=NET.peers||{},live=DX.rr.games.map((g,gi)=>({g,gi})).filter(({g,gi})=>g.sx==null&&!g.skip&&g.x!==NET.seat&&g.y!==NET.seat&&sbLive(gi));
+  return `<div class="card"><div class="ct">📺 Sportsbook</div><p class="cs" style="margin-bottom:6px">Bet play money on the other games: moneyline, spread, total and player props. Watch your friends play while you wait.</p>
+    <div class="kv"><span>Your bankroll</span><b>${S.bank} Dash Bucks${sbOpen()?` (+${sbOpen()} riding)`:''}</b></div>
+    ${live.map(({g,gi})=>`<div class="news">🔴 ${esc(DX.names[g.x].name)} vs ${esc(DX.names[g.y].name)}: ${sbLines(gi).status} <button class="chip2" data-tv="${gi}">Watch</button></div>`).join('')}
+    <div class="btns"><button class="btn" data-sbopen="1">Open the sportsbook</button></div></div>`;
+}
+function sbModal(m){
+  const S=sbState();if(!S)return mtop('Sportsbook')+'<p class="cs">Not available.</p>';const U=m.u=m.u||{tab:'games',sel:null,stake:50};
+  let h=mtop('📺 Sportsbook')+`<div class="kv"><span>Bankroll</span><b>${S.bank} Dash Bucks</b></div>`+segH('sbtab',[['games','Games'],['mine','My bets'],['board','Leaderboard']],U.tab);
+  if(U.tab==='games'){
+    const games=DX.rr.games.map((g,gi)=>({g,gi})).filter(({g})=>!g.skip&&g.x!==NET.seat&&g.y!==NET.seat&&g.sx==null);
+    if(!games.length)h+='<p class="cs" style="margin:10px 2px">No games to bet on right now. You can’t bet on your own games.</p>';
+    for(const {g,gi} of games){const L=sbLines(gi),X=DX.names[g.x].name,Y=DX.names[g.y].name,btn=(sel,lbl,odds,dis)=>{const on=U.sel&&U.sel.id===sel.id;return `<button class="chip2" data-sbsel='${JSON.stringify(sel).replace(/'/g,'&#39;')}' aria-pressed="${on}" ${dis?'disabled':''}>${lbl} <b>${sbOdds(odds)}</b></button>`;};
+      const mk=(k,side,line,odds,desc)=>({id:`${gi}-${k}-${side}`,gi,k,side,line,odds,desc});
+      h+=`<div class="card" style="padding:10px;margin:8px 0"><div style="font-weight:800">${esc(X)} vs ${esc(Y)}</div><p class="cs">${L.status}${L.lock?' · betting closed':''}${sbLive(gi)?` <button class="chip2" data-tv="${gi}">Watch</button>`:''}</p>
+        <div class="gh">Moneyline</div><div class="chips" style="flex-wrap:wrap">${btn(mk('ml','x',0,L.mlX,`${X} to win`),esc(X),L.mlX,L.lock)}${btn(mk('ml','y',0,L.mlY,`${Y} to win`),esc(Y),L.mlY,L.lock)}</div>
+        <div class="gh">Spread</div><div class="chips" style="flex-wrap:wrap">${btn(mk('sp','x',L.spX,-110,`${X} ${L.spX>0?'+':''}${L.spX}`),`${esc(X)} ${L.spX>0?'+':''}${L.spX}`,-110,L.lock)}${btn(mk('sp','y',-L.spX,-110,`${Y} ${-L.spX>0?'+':''}${-L.spX}`),`${esc(Y)} ${-L.spX>0?'+':''}${-L.spX}`,-110,L.lock)}</div>
+        <div class="gh">Total points</div><div class="chips" style="flex-wrap:wrap">${btn(mk('tot','o',L.tot,-110,`Over ${L.tot} (${X} vs ${Y})`),`Over ${L.tot}`,-110,L.lock)}${btn(mk('tot','u',L.tot,-110,`Under ${L.tot} (${X} vs ${Y})`),`Under ${L.tot}`,-110,L.lock)}</div>
+        <details${U.sel&&U.sel.gi===gi&&U.sel.k==='prop'?' open':''}><summary class="gh" style="cursor:pointer">Player props${L.propsLock?' (closed at kickoff)':''}</summary>${sbProps(gi).map((pp,j)=>`<div class="news">${esc(pp.nm)} (${esc(pp.team)}) ${pp.lbl}: ${pp.line}<div class="chips" style="margin-top:4px">${btn(Object.assign(mk('prop','o'+j,pp.line,-115,`${pp.nm} over ${pp.line} ${pp.lbl}`),{side:'o',id:`${gi}-p${j}-o`,key:pp.key,stat:pp.k}),'Over',-115,L.propsLock)}${btn(Object.assign(mk('prop','u'+j,pp.line,-115,`${pp.nm} under ${pp.line} ${pp.lbl}`),{side:'u',id:`${gi}-p${j}-u`,key:pp.key,stat:pp.k}),'Under',-115,L.propsLock)}</div></div>`).join('')}</details></div>`;}
+    if(U.sel){const win=Math.round(sbPay(U.stake,U.sel.odds)-U.stake);h+=`<div class="card" style="padding:10px;position:sticky;bottom:0;z-index:3;border:2px solid #2563eb"><div class="ct" style="font-size:16px">Bet slip</div><p class="cs">${esc(U.sel.desc)} (${sbOdds(U.sel.odds)})</p>
+      <div class="chips" style="flex-wrap:wrap;margin:6px 0">${[10,50,100,250].map(v=>`<button class="chip2" data-sbstake="${v}" aria-pressed="${U.stake===v}">${v}</button>`).join('')}<button class="chip2" data-sbstake="${S.bank}" aria-pressed="${U.stake===S.bank}">All in</button></div>
+      <p class="cs">Stake ${U.stake}, to win ${win}.</p><div class="btns"><button class="btn" data-sbplace="1" ${U.stake>S.bank?'disabled':''}>Place bet</button><button class="btn ghost" data-sbsel="">Clear</button></div></div>`;}
+  }
+  if(U.tab==='mine'){
+    const open=S.bets.filter(b=>b.st==='open'),done=S.bets.filter(b=>b.st!=='open').reverse();
+    h+=`<div class="gh">Open (${open.length})</div>${open.map(b=>`<div class="news">${esc(b.desc)} ${sbOdds(b.odds)} · ${b.stake} to win ${Math.round(sbPay(b.stake,b.odds)-b.stake)}</div>`).join('')||'<p class="cs">None.</p>'}
+      <div class="gh">Settled</div>${done.map(b=>`<div class="news" style="color:${b.st==='won'?'var(--good)':b.st==='lost'?'var(--bad)':'inherit'}">${{won:'Won',lost:'Lost',push:'Push',void:'Void'}[b.st]}: ${esc(b.desc)}${b.final!=null?` (finished with ${b.final})`:''} · ${b.st==='won'?'+'+(b.pay-b.stake):b.st==='lost'?'-'+b.stake:'stake back'}</div>`).join('')||'<p class="cs">None yet.</p>'}`;
+  }
+  if(U.tab==='board'){const P=NET.peers||{},rows=DX.sides.filter(s=>DX.ctl[s]==='human').map(s=>[DX.names[s].name,s===NET.seat?S.bank+sbOpen():(P[s]&&P[s].bk!=null?P[s].bk:SB_START)]).sort((x,y)=>y[1]-x[1]);
+    h+=`<div class="list">${rows.map(([n,v],i)=>`<div class="srow" style="grid-template-columns:24px 1fr 90px"><span>${i+1}</span><span>${esc(n)}</span><span class="num">${v}</span></div>`).join('')}</div><p class="cs" style="margin-top:6px">Bankroll plus money riding on open bets.</p>`;}
+  return h;
+}
+document.addEventListener('click',e=>{
+  if(!TD||!e.target.closest)return;const t=e.target;
+  const o=t.closest('[data-sbopen]');if(o){openModal({kind:'sb'});return;}
+  const w=t.closest('[data-tv]');if(w){closeModal();tvStart(+w.dataset.tv);return;}
+  const m=UI.modal;if(!m||m.kind!=='sb')return;
+  const s=t.closest('[data-sbsel]');if(s){m.u.sel=s.dataset.sbsel?JSON.parse(s.dataset.sbsel):null;renderModal();return;}
+  const k=t.closest('[data-sbstake]');if(k){m.u.stake=+k.dataset.sbstake;renderModal();return;}
+  if(t.closest('[data-sbplace]')&&m.u.sel){if(sbPlace(m.u.sel,m.u.stake))m.u.sel=null;renderModal();dxTourRender();return;}
+  const tb=t.closest('[data-act="sbtab"]');if(tb){m.u.tab=tb.dataset.v;renderModal();}
+},true);
+/* ---------- TV: watch a friends' game live ---------- */
+function tvStart(gi){
+  const {g,a,b}=sbSides(gi),P=NET.peers||{},gl=(P[a]&&P[a].gl&&P[a].gl.gi===gi)?P[a].gl.ts:null;
+  Object.assign(G.S.A,dxBuildSide(a,gl?gl[a]:DX.ts[a]));Object.assign(G.S.B,dxBuildSide(b,gl?gl[b]:DX.ts[b]));G.S.A.ctl='remote';G.S.B.ctl='remote';
+  G.mode='tv';G.tv={gi,a,b,gid:DX.seed+'-'+gi,lastQ:-1};G.play=null;G.drive={los:25,down:1,fd:35};G.sc={A:0,B:0};G.q=1;G.state='tv';G.hot=false;G.me='A';
+  setGameTeams(DX.names[a],DX.names[b]);$('#dview').classList.remove('show');document.body.classList.add('ingame','watching','tvmode');resize();
+  $('#tvBar').innerHTML=`<b>📺 ${esc(DX.names[a].name)} vs ${esc(DX.names[b].name)}</b><button data-sbopen="1">Bets</button><button id="tvBack">Back</button>`;$('#tvBar').classList.add('show');
+  $('#tvBack').onclick=tvExit;updateHud();
+}
+function tvExit(){G.tv=null;G.mode='';G.state='idle';G.play=null;document.body.classList.remove('ingame','watching','tvmode');$('#tvBar').classList.remove('show');hideBanner();$('#dview').classList.add('show');dxTourRender();}
+function tvTick(dt){
+  const T=G.tv;if(!T)return;const P=NET.peers||{},pa=P[T.a],pb=P[T.b],ok=x=>x&&x.gid===T.gid;
+  const gA=ok(pa)&&pa.gs,gB=ok(pb)&&pb.gs,gs=!gA?gB:!gB?gA:(gB.q>gA.q?gB:gA);
+  if(gs&&gs.q!==T.lastQ){T.lastQ=gs.q;G.sc.A=gs.a;G.sc.B=gs.b;G.poss=gs.po;if(gs.qq){G.q=gs.qq;G.clock=gs.ck;G.qlen=gs.ql||G.qlen;G.to={A:gs.ta,B:gs.tb};}G.drive={los:gs.l,down:gs.d,fd:gs.f};
+    if(gs.ph==='res'&&gs.m)showBanner(gs.m);else hideBanner();if(gs.ph==='over'){T.over=true;showBanner({main:'FINAL',sub:`${DX.names[T.a].name} ${gs.a}, ${DX.names[T.b].name} ${gs.b}`});}updateHud();}
+  const auth=G.poss==='A'?pa:pb;if(ok(auth)&&!T.over)specUpdate(dt,auth);
+  const mine=dxMyGame();if(mine&&!T.told){T.told=1;flash('Your game is up. Tap Back.',2600);}
+}
+
+/* ===================== Online exhibition: pick teams, then play your friend ===================== */
+const EXO={on:false,k:null,rd:false,started:false,n:0};
+function exoOpts(){const sv=tdSaved();return [...MAD.teams.map((n,i)=>[`nfl:${i}`,n]),...sv.map((t,i)=>[`sv:${i}`,`${t.name} (my saved team)`])];}
+function exoPack(k){
+  if(!k)return null;if(k.startsWith('nfl:'))return {k};const s=tdSaved()[+k.slice(3)];if(!s)return null;
+  const lite=c=>c?{name:c.name,role:c.role,os:c.os,ds:c.ds,aggr:c.aggr}:null,st=s.staffObj||{};
+  return {k,t:{name:s.name,slots:s.slots,staff:{hc:lite(st.hc),oc:lite(st.oc),dc:lite(st.dc)}}};
+}
+function exoTeam(p){
+  if(!p)return null;if(p.k.startsWith('nfl:'))return nflTeamTD(+p.k.slice(4));
+  const T=tdNewTeam(p.t.name,'human');T.slots=p.t.slots;T.staffObj=p.t.staff&&(p.t.staff.hc||p.t.staff.oc)?p.t.staff:randStaff(p.t.name);return T;
+}
+function exoName(p){if(!p)return null;return p.k.startsWith('nfl:')?MAD.teams[+p.k.slice(4)]:p.t.name;}
+function exoVis(p,hue){if(p&&p.k.startsWith('nfl:')){const inf=NFL_INFO[MAD.teams[+p.k.slice(4)]];return {name:MAD.teams[+p.k.slice(4)].replace(/^.* /,''),hue:hexHue(inf[1]),col:inf[1]};}return {name:p?p.t.name:'Team',hue,col:null};}
+function exoStart(){
+  Object.assign(EXO,{on:true,k:EXO.k||null,rd:false,started:false});NET.phase='exh';closeModal();$('#startOv').classList.add('hide');$('#dview').classList.add('show');
+  netSet({exo:{p:exoPack(EXO.k),rd:0,n:EXO.n,ql:NET.seat==='A'?G.qlen:undefined}});exoRender();
+}
+function exoRender(){
+  if(!EXO.on)return;const P=NET.peers||{},opp=P[NET.seat==='A'?'B':'A'],oe=opp&&opp.exo&&opp.exo.n===EXO.n?opp.exo:null;
+  const sel=`<select data-exo="1" style="width:100%;padding:12px;border-radius:12px;font:inherit;font-weight:700" ${EXO.rd?'disabled':''}><option value="">Pick your team…</option>${exoOpts().map(([v,l])=>`<option value="${v}" ${EXO.k===v?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
+  const mine=exoPack(EXO.k),u=mine?tdUnits(exoTeam(mine)):null;
+  $('#dview').innerHTML=`<div class="dhead"><div class="dclock">Online exhibition</div><div class="dsub">Pick your teams. The game starts when you’re both ready.${NET.seat==='A'?'':' The host’s quarter length is used.'}</div></div>
+    <div class="dbody"><div class="card"><div class="ct">Your team</div>${sel}${u?`<p class="cs" style="margin-top:8px">Offense ${u.off}, defense ${u.def}. ${esc(staffLineObj(exoTeam(mine).staffObj))}</p>`:''}</div>
+    <div class="card"><div class="ct">Your friend</div>${!opp?'<p class="cs">Not connected.</p>':oe&&oe.p?`<p class="cs" style="color:var(--text);font-weight:700">${esc(exoName(oe.p))}${oe.rd?' · ready ✓':' · deciding…'}</p>`:'<p class="cs">Choosing a team…</p>'}</div></div>
+    <div class="dfoot"><button class="btn" data-exogo="1" ${mine?'':'disabled'}>${EXO.rd?'Waiting for your friend… (tap to change)':'Ready'}</button><button class="btn ghost" data-exoquit="1">Leave</button></div>`;
+}
+function staffLineObj(s){if(!s)return '';return [s.hc&&`HC ${s.hc.name}`,s.oc&&`OC ${s.oc.name}`,s.dc&&`DC ${s.dc.name}`].filter(Boolean).join(' · ');}
+function exoTick(){
+  if(!EXO.on||EXO.started)return;const P=NET.peers||{},os=NET.seat==='A'?'B':'A',o=P[os]&&P[os].exo,me=NET.me.exo;
+  const key=JSON.stringify(o||null);if(key!==EXO.lastO){EXO.lastO=key;if(!(document.activeElement&&document.activeElement.dataset&&document.activeElement.dataset.exo))exoRender();}
+  if(EXO.rd&&me&&me.rd&&o&&o.rd&&o.n===EXO.n&&o.p&&me.p)exoKick(NET.seat==='A'?me:o,NET.seat==='A'?o:me);
+}
+function exoKick(ea,eb){
+  EXO.started=true;const host=NET.seat==='A'?NET.me.exo:(NET.peers.A&&NET.peers.A.exo);if(host&&host.ql)G.qlen=host.ql;
+  const A=exoTeam(ea.p),B=exoTeam(eb.p);Object.assign(G.S.A,tdBuildSide(A,61));Object.assign(G.S.B,tdBuildSide(B,62));
+  NET.role=NET.seat;NET.oppSeat=other(NET.role);NET.gid=`exh-${NET.hostSeed||NET.code}-${EXO.n}`;
+  Object.assign(NET,{applied:0,callQ:0,specQ:0,pid:0,lastSn:0,lastIn:0,lastInStr:'',lastMvN:undefined,lastTmo:undefined,lastRk:undefined,lostT:0,inp:{b:0,s:0,k:0},callPid:-1});
+  netSet({gid:NET.gid,gs:null,sn:null,pl:null,dc:null,mv:null,inp:null,tmo:null});NET.phase='game';netWho();
+  G.mode='exo';G.playoff=false;G.me=NET.role;G.hot=false;G.S[NET.role].ctl='human';G.S[other(NET.role)].ctl='remote';
+  const va=exoVis(ea.p,221),vb=exoVis(eb.p,21);if(Math.abs(va.hue-vb.hue)<25){vb.col=null;vb.hue=(vb.hue+150)%360;}
+  $('#dview').classList.remove('show');setGameTeams(va,vb);enterGame();
+}
+function exoRematch(){EXO.n++;EXO.rd=false;EXO.started=false;exoStart();}
+$('#dview').addEventListener('click',e=>{
+  if(!EXO.on)return;
+  if(e.target.closest('[data-exogo]')){if(!EXO.k)return;EXO.rd=!EXO.rd;netSet({exo:{p:exoPack(EXO.k),rd:EXO.rd?1:0,n:EXO.n,ql:NET.seat==='A'?G.qlen:undefined}});exoRender();exoTick();}
+  else if(e.target.closest('[data-exoquit]')){EXO.on=false;netLeave();$('#dview').classList.remove('show');showStart();}
+});
+document.addEventListener('change',e=>{const s2=e.target.closest&&e.target.closest('[data-exo]');if(!s2||!EXO.on)return;EXO.k=s2.value||null;EXO.rd=false;netSet({exo:{p:exoPack(EXO.k),rd:0,n:EXO.n,ql:NET.seat==='A'?G.qlen:undefined}});exoRender();});
+
 /* ===================== 1v1 Draft ===================== */
 const DSLOTS={QB:1,RB:1,WR:3,TE:1,OL:2,K:1,DL:2,LB:2,CB:2,S:1};
 /* Flexible personnel: 16 picks at any positions within these limits (min, max). */
@@ -5963,6 +6247,7 @@ function dxLoadCard(side){
     <div class="chips"><button class="chip2" data-dx="rrauto" data-s="${side}" aria-pressed="${!!ts.auto}">Coach rests worn-out starters: ${ts.auto?'On':'Off'}</button></div></div>`;
 }
 function dxTourRender(){
+  if(G.mode==='tv'&&G.tv)return;
   const T=DX.rr,st=dxStandings(),nm=sd=>DX.names[sd].name,col=sd=>DX.names[sd].col||hslHex(DX.names[sd].hue,70,46),on=DX.opp==='online';
   const r0=dxCurRound(),done=r0===Infinity,nRd=Math.max(...T.games.map(z=>z.r))+1;
   while(T.games[T.i]&&(T.games[T.i].skip||T.games[T.i].sx!=null))T.i++;
@@ -5984,6 +6269,7 @@ function dxTourRender(){
       <div class="btns">${hum?`<button class="btn" data-dx="rrplay">Play game</button><button class="btn alt" data-dx="rrsim">Sim game</button>`:`<button class="btn" data-dx="rrsim">Sim this game</button>${T.games.slice(T.i).some(dxRRHuman)?`<button class="btn alt" data-dx="rrsimai">Sim to my next game</button>`:''}`}</div></div>`;}
   if(!done)for(const sd of DX.sides)if(dxMine(sd))body+=dxLoadCard(sd);
   if(!done&&DX.td&&TD)for(const sd of DX.sides)if(dxMine(sd))body+=foCard(sd);
+  if(DX.td&&TD&&DX.opp==='online')body+=sbCard();
   const played=T.games.filter(z=>z.sx!=null);
   if(played.length)body+=`<div class="card"><div class="ct">Results</div>${played.map(z=>`<div class="news">Round ${z.r+1}: ${esc(nm(z.x))} ${z.sx}, ${esc(nm(z.y))} ${z.sy}</div>`).join('')}</div>`;
   const left=T.games.filter(z=>z.sx==null&&!z.skip&&(on?z.r>r0:true)&&z!==g);if(left.length)body+=`<div class="card"><div class="ct">Still to play</div>${left.map(z=>`<div class="news">Round ${z.r+1}: ${esc(nm(z.x))} vs ${esc(nm(z.y))}</div>`).join('')}</div>`;
@@ -6059,6 +6345,7 @@ function netLobby(){
 }
 function netStart(){
   if(NET.seat!=='A'||DX.pool)return;
+  if(NET.exh&&!NET.td){if(EXO.on)return;netSet({start:{n:2,hum:['A','B'],exh:1}});exoStart();hToast('Your friend is here. Pick your teams.',2000);return;}
   if(NET.td){if(TD)return;const n=NET.hostN,hum=['A',...DSIDES.slice(1,n).filter(sd=>!!NET.peers[sd])];netSet({start:{n,hum,td:1}});NET.phase='td';tdStart(Object.assign({},NET.td,{mode:'online',seed:NET.hostSeed,names:NET.hostNames.slice(0,n),n,hum}));hToast('Triple Draft is on. Simulating the season first.');return;}
   const n=NET.hostN,hum=['A',...DSIDES.slice(1,n).filter(sd=>!!NET.peers[sd])];
   netSet({start:{n,hum}});
@@ -6077,6 +6364,8 @@ async function netGuest(code){
   setTimeout(()=>{if(NET.on&&!DX.pool&&!NET.seat)$('#dview .dsub').textContent='Nobody is hosting this code yet. Check it with your friend.';},8000);
 }
 function netFrame(dt){
+  if(G.mode==='tv'&&G.tv){tvTick(dt);}
+  if(NET.phase==='rr'&&DX.td&&TD&&DX.opp==='online'&&sbSettle()&&!G.tv)dxTourRender();
   if(!NET.on)return;
   const P=NET.peers||{},host=NET.seat==='A';
   if(NET.phase==='lobby'){
@@ -6088,6 +6377,7 @@ function netFrame(dt){
     }else{
       const H=NET.peerList.find(p=>p.s==='A');
       if(H&&H.asg&&H.asg[NET.tok]&&!NET.seat){const sd=H.asg[NET.tok];if(sd==='X'){hToast('That game is full.',2500);netLeave();$('#dview').classList.remove('show');showStart();return;}NET.seat=sd;NET.role=sd;netSet({s:sd,r:sd});}
+      if(NET.seat&&H&&H.start&&H.start.exh){if(!EXO.on&&NET.phase==='lobby')exoStart();return;}
       if(NET.seat&&H&&H.start&&H.td&&!TD){NET.phase='td';tdStart(Object.assign({},H.td,{mode:'online',seed:H.seed,names:H.names.slice(0,H.start.n),n:H.start.n,hum:H.start.hum}));return;}
       if(NET.seat&&H&&H.start&&!DX.pool&&!H.td){DX.opp='online';DX.quick=!!H.qk;dxSetup(H.seed,H.names.slice(0,H.start.n),null,H.start.n,H.start.hum);NET.phase='draft';if(DX.quick)dxAutoAll();dxRender();return;}
     }
@@ -6104,6 +6394,7 @@ function netFrame(dt){
     if(idc&&TD.view==='post'&&!(document.activeElement&&document.activeElement.dataset&&document.activeElement.dataset.tdname))tdRender();
     const hp=P.A;if(NET.seat!=='A'&&hp&&hp.tdgo&&TD.view==='post'&&!TD.went){TD.went=1;if(hp.tdgo.ids)for(const sd in hp.tdgo.ids)tdApplyId(sd,hp.tdgo.ids[sd]);if(hp.tdgo.m==='cl')clEnter(TD);else tdPlay();}}
   if(NET.phase==='cl')clTick();
+  if(NET.phase==='exh')exoTick();
   if(NET.phase==='rr'&&DX.td&&TD&&TD.mode==='online'&&foSync(P))dxTourRender();
   if(NET.phase==='rr'&&DX.td&&TD&&NET.seat!=='A'&&P.A&&P.A.tdcl&&!TD.clGo){TD.clGo=1;clEnter(TD);}
   if(NET.phase==='rr'&&DX.rr){
@@ -6144,11 +6435,12 @@ function applyGS(gs){
   if(gs.ph==='call'){
     hideBanner();G.state='spectcall';NET.dp=null;NET.ballOn=false;NET.preOn=false;NET.specQ=gs.q;NET.callPid=NET.other&&NET.other.pl?NET.other.pl.i:-1;G.selD=null;G.defShow=false;G.defRot=false;G.offCall=null;
     G.dc=makeDC(DEFCALLS[0],{form:'spread'});setupPlay({kind:'preview',form:'spread',mirror:1});
-    showSheet('def');
+    if(G.daiMode===2)daiAutoCall();else showSheet('def');
   }else if(gs.ph==='live'){hideSheet();G.state='spect';}
   else if(gs.ph==='res'){G.state='spect';if(gs.m)showBanner(gs.m);}
   else if(gs.ph==='hand'){G.state='spectwait';hideSheet();}
 }
+function daiAutoCall(){let spec=null;try{const c=coachDef();spec=DEFCALLS.find(d=>d.k===c.k);}catch(e){}hideSheet();netSendDef(spec||DEFCALLS[0]);}
 function netSendDef(spec){
   netSet({dc:{q:NET.specQ,k:spec.k,sh:spec.show?1:0,ro:spec.rot?1:0,ar:G.armPend||null}});G.armPend=null;
   G.state='spectwait';flash(`${spec.name} is in. Waiting for the snap…`,2500);
@@ -6164,6 +6456,7 @@ function netGameTick(dt){
   {const ch=NET.other&&NET.other.ch;if(ch&&ch.n!==NET.lastChN&&G.poss===NET.role&&G.play&&ch.q===NET.callQ){NET.lastChN=ch.n;const r=G.play.players[ch.i];
     if(r&&r.team==='off'){if(G.state==='presnap')shadowAssign(G.play,r,false);else if(G.state==='live'){G.play.chase=null;defAttack(G.play,r);}}}}
   {const dp=NET.other&&NET.other.dpre;if(dp&&dp.n!==NET.lastDpN&&G.poss===NET.role&&G.state==='presnap'&&G.play&&dp.q===NET.callQ){NET.lastDpN=dp.n;applyDefLook(dp,true);}}
+  {const want=(G.daiMode||0)>0?1:0;if(NET.me&&(NET.me.dai||0)!==want)netSet({dai:want});document.body.classList.toggle('aidef',want>0&&G.poss!==NET.role);}
   if(G.poss!==NET.role){const pre=!!(NET.other&&NET.other.sn&&NET.other.sn.s===0&&(G.state==='spect'||G.state==='spectwait')&&G.play&&G.play.spec);if(pre!==NET.preOn){NET.preOn=pre;if(!pre)NET.ballOn=false;renderSpecPre();}}
   {const mv=NET.other&&NET.other.mv;if(mv&&mv.n!==NET.lastMvN&&G.poss===NET.role&&G.state==='presnap'&&G.play&&mv.q===NET.callQ){NET.lastMvN=mv.n;const q=G.play.players[mv.i];
     if(q&&q.team==='def'){if(mv.s)G.play.dh=q;else{const L=G.play.L,nx=clamp(mv.x/10,1,FW-1),ny=clamp(mv.y/10,L+.7,Math.min(L+28,109));if(q.zone&&!q.zone.deep)q.zone.x=clamp(q.zone.x+(nx-(q.hx??q.x)),3,FW-3);q.hx=nx;q.hy=ny;q.sd=0;q.moved=true;(G.defMoves=G.defMoves||new Map()).set(q.rp,{x:nx,y:ny});}}}}
@@ -6183,8 +6476,8 @@ function netSnap(){
   const b=P.ball;
   netSet({sn:{i:P.pid,p:pa,b:[Math.round(b.x*10),Math.round(b.y*10),Math.round((b.z||0)*10),b.mode==='air'?2:1],h:P.dh?P.players.indexOf(P.dh):-1,z:P.players.map((p,i)=>inZone(p.rp)?i:-1).filter(i=>i>=0),j:P.dh?[P.dh.job==='rush'?1:P.dh.job==='man'?2:P.dh.job==='zone'?3:P.dh.job==='spy'?4:0,P.dh.man?P.players.indexOf(P.dh.man):-1,P.dh.zone?Math.round(P.dh.zone.x*10):0,P.dh.zone?Math.round(P.dh.zone.y*10):0,P.dh.zone&&P.dh.zone.deep?1:0]:null,s:G.state==='presnap'?0:G.state==='live'?1:2,c:[Math.round(G.clock*10),Math.round(G.pc*10),G.q,G.run?1:0]}});
 }
-function specUpdate(dt){
-  const o=NET.other;if(!o||!o.pl||!o.sn||o.sn.i!==o.pl.i||!Array.isArray(o.pl.t))return;
+function specUpdate(dt,src){
+  const o=src||NET.other;if(!o||!o.pl||!o.sn||o.sn.i!==o.pl.i||!Array.isArray(o.pl.t))return;
   if(G.state==='spectwait'&&o.pl.i===NET.callPid)return;
   let P=G.play,first=false;
   if(!P||!P.spec||P.spid!==o.pl.i){
@@ -6194,7 +6487,7 @@ function specUpdate(dt){
     G.play=P;
   }
   const sp=o.sn.p,k=first?1:Math.min(1,dt*14);
-  if(first&&o.sn.s===0&&!G.seen.ndrag){G.seen.ndrag=1;flash('Drag defenders to move them before the snap. Tap one to control him.',3000);}
+  if(first&&o.sn.s===0&&!G.seen.ndrag&&G.mode!=='tv'){G.seen.ndrag=1;flash('Drag defenders to move them before the snap. Tap one to control him.',3000);}
   const hi=o.sn.h,live=o.sn.s===1&&G.state==='spect';
   P.players.forEach((p,i)=>{if(G.pdDrag&&G.pdDrag.net&&G.pdDrag.i===i)return;
     if(live&&i===hi&&!first){const iv=inputVec(),sp2=(p.spd||7)*(burst.t>0?1.22:1),vx=iv.x*sp2,vy=iv.y*sp2;
@@ -6261,7 +6554,7 @@ $('#startOv').addEventListener('click',e=>{
   else if(a==='nfl')openModal({kind:'nflsetup'});
   else if(a==='ddraft')openModal({kind:'ddsetup',n:8,h:1,l:'rr'});
   else if(a==='join')openModal({kind:'join',code:''});
-  else if(a==='qonline'){NET.td=null;dxNew('online',true);}
+  else if(a==='qonline'){NET.td=null;NET.exh=null;dxNew('online',true);}
   else if(a==='tut'){TUT.track='off';TUT.i=0;tutCard();}
   else if(a==='tdx')openModal({kind:'tdsetup'});
   else if(a==='gaunt')openModal({kind:'gasetup'});
@@ -6322,7 +6615,7 @@ function joinModal(m){
 
 /* ---------- boot ---------- */
 if(window.__GD_TEST)window.__gd={G,DX,NET,get LG(){return LG},set LG(v){LG=v},genLeague,startSeason,playWeek,playPoRound,startOffseason,draftAdvance,teamRatings,payroll,standings,roster,depth,startDynGame,recordMyGame,simGame,tradeEval,serialize,deserialize,UI,renderHub,aiFill,marketVal,askOf,startDraft,draftPlayer,simRest,nextGame,
-  genNFLLeague,nflSched,nflUnits,nflSimGame,NFL_DIV,setLimits,genDraftLeague,sdAdvance,sdAiPick,sdPick,humanGames,recordGame,finalizeRound,offerCheck,makeOffer,buildY,buildR,startQuick,tryStart,TD:()=>TD,watchStart,think,RG,rgTeam,rgStart,rgSim,doBallFor,shadowAssign,applyDefLook,specPreAct,renderSpecPre,chaseTick,cfbParse,cfbSave,cfbLoad,cfbClass,cfbHash,clAfterApply,__clDone:()=>clGameDone(),CL,clEnter,clTick,clKey,hubAct,foApply,foFA,foState,dxSeriesFix,seriesLine,NFLC,TPOOL:()=>TPOOL,BASE_COACHES,scout,OS,DS,coachTags,tdWorldSim,tdResolve,tdToRR,tdExport,tdStart,tdChoose,tdCurOffers,tdBestSlot,posR,fitOf,tdUnits,tdChem,tdBuildSide,tdSpread,tdNext,gaStart,gaSim,gaPlay,gaResult,GA:()=>GA,bossTeam,nflTeamTD,exhStart,doDiveFor,doStripFor,replayOpen,replayClose,RP,momAdd,tdArm,v4Play,doHitFor,kickoffResolve,applyRunoff,progressSeasonStart,evalTiers,devShopApply,genGoals,boxHalf,boxMerge,simBox,leadersView,gameBoxHTML,upgradeLeague,archiveStats,TUT,TUT_OFF,TUT_DEF,tutCard,tutStart,tutClick,huddleFormed,dxTS,dxPlayers,dxCurRound,dxMyGame,netStart,DX,dxStandings,dxSideRatings,dxNeeds,dxTaken,dxTurn,leaveGame,SB,setupSandbox,sbGo,sbEdit,sbEnterField,sbNew,sbOpenSetup,sbSheetClick,cam,toWorld,startQuick,dxNew,dxPick,dxKickoff,dxTurn,dxNeeds,showSheet,sheetGo,tryStart,snap,renderSheet,renderPrebar,startMotion,flipCall,reSetup,SSP,applyGS,netPub,specUpdate,beginDrive,toPlaycall};
+  genNFLLeague,nflSched,nflUnits,nflSimGame,NFL_DIV,setLimits,genDraftLeague,sdAdvance,sdAiPick,sdPick,humanGames,recordGame,finalizeRound,offerCheck,makeOffer,buildY,buildR,startQuick,tryStart,TD:()=>TD,EXO,exoStart,exoTick,exoKick,exoPack,exoTeam,sbLines,sbProps,sbPlace,sbSettle,sbState,tvStart,tvExit,sbBase,foAct,foRebuild,foOwners,foAiOffers,foRoster,foHub,foModal,watchStart,think,RG,rgTeam,rgStart,rgSim,doBallFor,shadowAssign,applyDefLook,specPreAct,renderSpecPre,chaseTick,cfbParse,cfbSave,cfbLoad,cfbClass,cfbHash,clAfterApply,__clDone:()=>clGameDone(),CL,clEnter,clTick,clKey,hubAct,foFA,foState,dxSeriesFix,seriesLine,NFLC,TPOOL:()=>TPOOL,BASE_COACHES,scout,OS,DS,coachTags,tdWorldSim,tdResolve,tdToRR,tdExport,tdStart,tdChoose,tdCurOffers,tdBestSlot,posR,fitOf,tdUnits,tdChem,tdBuildSide,tdSpread,tdNext,gaStart,gaSim,gaPlay,gaResult,GA:()=>GA,bossTeam,nflTeamTD,exhStart,doDiveFor,doStripFor,replayOpen,replayClose,RP,momAdd,tdArm,v4Play,doHitFor,kickoffResolve,applyRunoff,progressSeasonStart,evalTiers,devShopApply,genGoals,boxHalf,boxMerge,simBox,leadersView,gameBoxHTML,upgradeLeague,archiveStats,TUT,TUT_OFF,TUT_DEF,tutCard,tutStart,tutClick,huddleFormed,dxTS,dxPlayers,dxCurRound,dxMyGame,netStart,DX,dxStandings,dxSideRatings,dxNeeds,dxTaken,dxTurn,leaveGame,SB,setupSandbox,sbGo,sbEdit,sbEnterField,sbNew,sbOpenSetup,sbSheetClick,cam,toWorld,startQuick,dxNew,dxPick,dxKickoff,dxTurn,dxNeeds,showSheet,sheetGo,tryStart,snap,renderSheet,renderPrebar,startMotion,flipCall,reSetup,SSP,applyGS,netPub,specUpdate,beginDrive,toPlaycall};
 UI.loading=true;showStart();
 requestAnimationFrame(frame);
 (async()=>{
