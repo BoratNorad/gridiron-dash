@@ -5878,10 +5878,10 @@ function sbPay(stake,o){return stake+(o>0?stake*o/100:stake*100/Math.abs(o));}
 function mlOdds(p){p=clamp(p,.03,.97);const q=p*1.0225;return q>=.5?-Math.round(100*q/(1-q)/5)*5:Math.round(100*(1-q)/q/5)*5;}
 function half(v){return Math.round(v*2)/2;}
 function sbDrives(){return clamp(Math.round((G.qlen||60)*4/52),3,12);}
-function sbSides(gi){const g=DX.rr.games[gi],a=g.x<g.y?g.x:g.y,b=a===g.x?g.y:g.x;return {g,a,b};}
+function sbkSides(gi){const g=DX.rr.games[gi],a=g.x<g.y?g.x:g.y,b=a===g.x?g.y:g.x;return {g,a,b};}
 /* pregame numbers from 300 simulated games */
 function sbBase(gi){
-  TD.sbBase=TD.sbBase||{};if(TD.sbBase[gi])return TD.sbBase[gi];const {g}=sbSides(gi);
+  TD.sbBase=TD.sbBase||{};if(TD.sbBase[gi])return TD.sbBase[gi];const {g}=sbkSides(gi);
   const ux=tdUnits(TD.teams[g.x]),uy=tdUnits(TD.teams[g.y]),nD=sbDrives(),M=[],T=[];let wx=0;
   seeded((TD.seed^tdHash(gi*997+13))>>>0,()=>{for(let k=0;k<300;k++){let sx=0,sy=0;for(let d=0;d<nD;d++){sx+=driveSim(ux.off,uy.def);sy+=driveSim(uy.off,ux.def);}M.push(sx-sy);T.push(sx+sy);wx+=sx>sy?1:sx===sy?.5:0;}});
   const mean=a=>a.reduce((x,y)=>x+y,0)/a.length,m=mean(M),t=mean(T),sd=Math.sqrt(mean(M.map(v=>(v-m)**2)))||7,st=Math.sqrt(mean(T.map(v=>(v-t)**2)))||8;
@@ -5889,13 +5889,13 @@ function sbBase(gi){
 }
 /* where the game stands, read from the two players' devices */
 function sbLive(gi){
-  const {a,b}=sbSides(gi),P=NET.peers||{},gid=DX.seed+'-'+gi,pa=P[a],pb=P[b],ok=x=>x&&x.gid===gid&&x.gs;
+  const {a,b}=sbkSides(gi),P=NET.peers||{},gid=DX.seed+'-'+gi,pa=P[a],pb=P[b],ok=x=>x&&x.gid===gid&&x.gs;
   const gs=!ok(pa)?(ok(pb)?pb.gs:null):!ok(pb)?pa.gs:(pb.gs.q>pa.gs.q?pb.gs:pa.gs);if(!gs||gs.ph==='over')return null;
   const ql=gs.ql||G.qlen||60,left=gs.qq>=5?ql*.25:Math.max(0,(4-gs.qq)*ql+gs.ck),fr=clamp(left/(4*ql),0,1);
   return {gs,fr,sa:gs.a,sb:gs.b,a,b};
 }
 function sbLines(gi){
-  const B=sbBase(gi),{g,a}=sbSides(gi),L=sbLive(gi);let m=B.m,t=B.t,sd=B.sd,st=B.st,live=false,lock=false,status='Not started';
+  const B=sbBase(gi),{g,a}=sbkSides(gi),L=sbLive(gi);let m=B.m,t=B.t,sd=B.sd,st=B.st,live=false,lock=false,status='Not started';
   if(L){live=true;const cx=g.x===a?L.sa-L.sb:L.sb-L.sa,ct=L.sa+L.sb;m=cx+B.m*L.fr;t=ct+B.t*L.fr;sd=Math.max(1,B.sd*Math.sqrt(L.fr));st=Math.max(1,B.st*Math.sqrt(L.fr));lock=L.fr<.25;
     status=`Live: ${L.gs.qq>=5?'OT':'Q'+L.gs.qq} ${clockTxt(L.gs.ck)}, ${esc(DX.names[g.x].name)} ${g.x===a?L.sa:L.sb}-${g.x===a?L.sb:L.sa}`;}
   if(g.sx!=null){lock=true;status=`Final: ${esc(DX.names[g.x].name)} ${g.sx}-${g.sy}`;}
@@ -5904,7 +5904,7 @@ function sbLines(gi){
   return {p,mlX:mlOdds(p),mlY:mlOdds(1-p),spX:spX===0?-.5:spX,tot,live,lock,status,propsLock:live||g.sx!=null};
 }
 function sbProps(gi){
-  TD.sbProps=TD.sbProps||{};if(TD.sbProps[gi])return TD.sbProps[gi];const {a,b}=sbSides(gi),f=clamp((G.qlen||60)/170,.25,1.8),out=[];
+  TD.sbProps=TD.sbProps||{};if(TD.sbProps[gi])return TD.sbProps[gi];const {a,b}=sbkSides(gi),f=clamp((G.qlen||60)/170,.25,1.8),out=[];
   for(const [role,seat] of [['A',a],['B',b]]){const S=dxBuildSide(seat,DX.ts&&DX.ts[seat]),dp=S.dp,pr=(pos,i,k,dflt,lbl)=>{const rp=dp[pos]&&dp[pos][i];if(!rp)return;const src=rp.mid!=null?tp(rp.mid):null,sn=src&&src.sn,per=sn&&sn.g?sn[k]/sn.g:dflt;out.push({key:`${role}-${pos}-${i}`,k,nm:rp.name,team:DX.names[seat].name,lbl,line:Math.max(.5,half(per*f))});};
     pr('QB',0,'py',220,'passing yards');pr('RB',0,'ry',60,'rushing yards');
     let wi=0,best=-1;(dp.WR||[]).slice(0,3).forEach((rp,i)=>{const s=rp.mid!=null&&tp(rp.mid).sn;const v=s&&s.g?s.rcy/s.g:rp.ovr;if(v>best){best=v;wi=i;}});pr('WR',wi,'rcy',55,'receiving yards');}
@@ -5912,7 +5912,7 @@ function sbProps(gi){
 }
 function sbPlace(sel,stake){
   const S=sbState();stake=Math.floor(stake);if(!(stake>0)||stake>S.bank){hToast('Not enough Dash Bucks.',1800);return false;}
-  const {g}=sbSides(sel.gi);if(g.x===NET.seat||g.y===NET.seat){hToast('You can’t bet on your own game.',1800);return false;}
+  const {g}=sbkSides(sel.gi);if(g.x===NET.seat||g.y===NET.seat){hToast('You can’t bet on your own game.',1800);return false;}
   const L=sbLines(sel.gi);if(sel.k==='prop'?L.propsLock:L.lock){hToast('Betting on that is closed.',1800);return false;}
   S.bank-=stake;S.bets.push(Object.assign({},sel,{id:++S.n,stake,st:'open'}));sbSave();hToast(`Bet placed: ${sel.desc} for ${stake}.`,2000);return true;
 }
@@ -5923,7 +5923,7 @@ function sbSettle(){
     if(bt.k==='ml')res=mx===0?'push':((mx>0)===(bt.side==='x')?'won':'lost');
     else if(bt.k==='sp'){const c=(bt.side==='x'?mx:-mx)+bt.line;res=c===0?'push':c>0?'won':'lost';}
     else if(bt.k==='tot')res=tot===bt.line?'push':((tot>bt.line)===(bt.side==='o')?'won':'lost');
-    else{const {a,b}=sbSides(bt.gi),hum=[a,b].filter(s=>DX.ctl[s]==='human'),halves=hum.map(s=>P[s]&&P[s].bxg===bt.gi&&P[s].bxh).filter(Boolean);
+    else{const {a,b}=sbkSides(bt.gi),hum=[a,b].filter(s=>DX.ctl[s]==='human'),halves=hum.map(s=>P[s]&&P[s].bxg===bt.gi&&P[s].bxh).filter(Boolean);
       if(!hum.length)res='void';else if(halves.length===hum.length){let v=0;for(const h of halves)for(const [k,l] of h.p||[])if(k===bt.key)v+=l[bt.stat]||0;bt.final=v;res=v===bt.line?'push':((v>bt.line)===(bt.side==='o')?'won':'lost');}
       else if(DX.rr.games.filter(z=>z.sx!=null).length-(bt.doneAt??(bt.doneAt=DX.rr.games.filter(z=>z.sx!=null).length))>=3)res='void';}
     if(!res)continue;bt.st=res;ch=true;
@@ -5977,7 +5977,7 @@ document.addEventListener('click',e=>{
 },true);
 /* ---------- TV: watch a friends' game live ---------- */
 function tvStart(gi){
-  const {g,a,b}=sbSides(gi),P=NET.peers||{},gl=(P[a]&&P[a].gl&&P[a].gl.gi===gi)?P[a].gl.ts:null;
+  const {g,a,b}=sbkSides(gi),P=NET.peers||{},gl=(P[a]&&P[a].gl&&P[a].gl.gi===gi)?P[a].gl.ts:null;
   Object.assign(G.S.A,dxBuildSide(a,gl?gl[a]:DX.ts[a]));Object.assign(G.S.B,dxBuildSide(b,gl?gl[b]:DX.ts[b]));G.S.A.ctl='remote';G.S.B.ctl='remote';
   G.mode='tv';G.tv={gi,a,b,gid:DX.seed+'-'+gi,lastQ:-1};G.play=null;G.drive={los:25,down:1,fd:35};G.sc={A:0,B:0};G.q=1;G.state='tv';G.hot=false;G.me='A';
   setGameTeams(DX.names[a],DX.names[b]);$('#dview').classList.remove('show');document.body.classList.add('ingame','watching','tvmode');resize();
